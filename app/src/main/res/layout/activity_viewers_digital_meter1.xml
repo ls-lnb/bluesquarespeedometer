@@ -49,6 +49,58 @@
                     android:gravity="bottom"
                     />
             </LinearLayout>
+            <Space
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                />
+            <Space
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="2dp"
+                android:background="@color/colorAccent"
+                android:layout_marginStart="12sp"
+                android:layout_marginEnd="12sp"
+                android:layout_marginBottom="6sp"
+                />
+            <LinearLayout
+                android:id="@+id/digital_meter1_altitude_area"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_horizontal"
+                android:layout_marginBottom="4sp"
+                >
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/metrics_altitude_short"
+                    android:textSize="24sp"
+                    android:textColor="?baseTextColor"
+                    android:paddingEnd="16sp"
+                    />
+                <TextView
+                    android:id="@+id/digital_meter1_altitude_textview"
+                    android:layout_width="140sp"
+                    android:layout_height="wrap_content"
+                    android:textSize="48sp"
+                    android:textColor="?baseTextColor"
+                    android:fontFamily="monospace"
+                    android:gravity="end"
+                    />
+                <TextView
+                    android:id="@+id/digital_meter1_altitude_unit_textview"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="20sp"
+                    android:paddingStart="8sp"
+                    android:textColor="?baseTextColor"
+                    />
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 </LinearLayout>

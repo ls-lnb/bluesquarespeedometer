@@ -6,7 +6,6 @@
     tools:context=".MainActivity"
     android:background="?backgroundColor"
     android:id="@+id/main"
-    android:keepScreenOn="true"
     >
     <LinearLayout
         android:layout_width="match_parent"
@@ -419,6 +418,41 @@
         </LinearLayout>
         <LinearLayout
             android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            >
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                >
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/config_keep_screen_on"
+                    />
+                <TextView
+                    android:id="@+id/main_activity_config_keep_screen_on_textview"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="?baseTextColor"
+                    />
+            </LinearLayout>
+            <Space
+                android:layout_width="1dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                />
+            <Button
+                android:id="@+id/main_activity_keep_screen_on_button"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end"
+                android:text="@string/general_button_change"
+                />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="3dp"
             android:background="@color/colorAccent"
             android:layout_marginVertical="4sp"
@@ -434,6 +468,12 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/menu_this_app_digital_speedometer_fullscreen"
+                />
+            <Button
+                android:id="@+id/main_activity_overlay_button"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/menu_this_app_overlay_show"
                 />
             <LinearLayout
                 android:layout_width="match_parent"

@@ -54,4 +54,23 @@
     <string name="general_button_retry">다시 시도하기</string>
 
     <string name="licensing_source_code_header">소스 코드</string>
+
+    <string name="menu_this_app_overlay_show">미니 오버레이 표시</string>
+    <string name="menu_this_app_overlay_hide">미니 오버레이 숨기기</string>
+
+    <string name="metrics_altitude_short">고도</string>
+
+    <string name="config_keep_screen_on">화면 켜두기</string>
+    <string name="option_on">켬</string>
+    <string name="option_off">끔</string>
+
+    <string name="overlay_permission_description">미니 오버레이는 다른 앱(예: 내비게이션 앱) 위에 속도와 고도를 표시합니다. Android에서는 이 기능에 \"다른 앱 위에 표시\" 권한이 필요합니다.</string>
+    <string name="overlay_permission_grant_prompt">\"다른 앱 위에 표시\" 권한 허용</string>
+    <string name="overlay_permission_denied">\"다른 앱 위에 표시\" 권한이 허용되지 않아 오버레이를 표시할 수 없습니다.</string>
+    <string name="overlay_location_required_description">미니 오버레이는 속도와 고도를 표시하기 위해 위치 권한이 필요합니다.</string>
+    <string name="overlay_notification_channel">미니 속도계 오버레이</string>
+    <string name="overlay_notification_title">미니 속도계 오버레이</string>
+    <string name="overlay_notification_text">다른 앱 위에 속도 및 고도 오버레이가 표시되어 있습니다.</string>
+    <string name="overlay_notification_action_stop">중지</string>
+    <string name="overlay_close_button">×</string>
 </resources>
