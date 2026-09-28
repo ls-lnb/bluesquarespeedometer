@@ -469,12 +469,6 @@
                 android:layout_height="wrap_content"
                 android:text="@string/menu_this_app_digital_speedometer_fullscreen"
                 />
-            <Button
-                android:id="@+id/main_activity_overlay_button"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/menu_this_app_overlay_show"
-                />
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="3dp"
@@ -482,6 +476,12 @@
                 android:layout_marginVertical="4sp"
                 />
         </LinearLayout>
+        <Button
+            android:id="@+id/main_activity_overlay_button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/menu_this_app_overlay_show"
+            />
         <Button
             android:id="@+id/main_activity_licensing_information_button"
             android:layout_width="match_parent"
