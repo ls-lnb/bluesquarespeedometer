@@ -8,3 +8,6 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Local release signing key and its credentials (never commit these)
+/keystore/

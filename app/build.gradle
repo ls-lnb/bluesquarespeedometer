@@ -18,6 +18,24 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        release {
+            def signingProperties = new Properties()
+            def signingPropertiesFile = rootProject.file("keystore/keystore.properties")
+            if (signingPropertiesFile.exists()) {
+                signingPropertiesFile.withInputStream { signingProperties.load(it) }
+            }
+
+            def storeFilePath = System.getenv("RELEASE_KEYSTORE_FILE") ?: signingProperties.getProperty("storeFile")
+            if (storeFilePath != null) {
+                storeFile rootProject.file(storeFilePath)
+                storePassword System.getenv("RELEASE_KEYSTORE_PASSWORD") ?: signingProperties.getProperty("storePassword")
+                keyAlias System.getenv("RELEASE_KEYSTORE_ALIAS") ?: signingProperties.getProperty("keyAlias")
+                keyPassword System.getenv("RELEASE_KEYSTORE_KEY_PASSWORD") ?: signingProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
@@ -31,6 +49,9 @@ android {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // Signed only when keystore/keystore.properties exists (gitignored);
+            // without it the build falls back to an unsigned release APK.
+            signingConfig signingConfigs.release.storeFile != null ? signingConfigs.release : null
         }
     }
     buildFeatures {
