@@ -48,6 +48,7 @@
     <string name="config_altitude_unit">Altitude unit</string>
     <string name="config_air_pressure_unit">Air pressure unit</string>
     <string name="config_keep_screen_on">Keep screen on</string>
+    <string name="config_overlay_keep_screen_on">Keep screen on (overlay)</string>
     <string name="option_on">On</string>
     <string name="option_off">Off</string>
 

@@ -131,6 +131,52 @@ class MainActivityTest {
         scenario.close()
     }
 
+    @Test
+    fun testOverlayKeepScreenOnOption() {
+        val scenario = ActivityScenario.launch(MainActivity::class.java)
+        Thread.sleep(3000)
+
+        Assume.assumeTrue(Build.VERSION.SDK_INT >= 24)
+
+        scrollMainViewToBottom(scenario)
+
+        // Default of the option is "On": the display stays on while the
+        // mini overlay is shown
+        Espresso.onView(ViewMatchers.withId(R.id.main_activity_config_overlay_keep_screen_on_textview))
+            .check(ViewAssertions.matches(ViewMatchers.withText("On")))
+            .check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
+
+        Espresso.onView(ViewMatchers.withId(R.id.main_activity_overlay_keep_screen_on_button))
+            .check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
+            .perform(ViewActions.click())
+
+        Espresso.onView(ViewMatchers.withId(R.id.main_activity_config_overlay_keep_screen_on_textview))
+            .check(ViewAssertions.matches(ViewMatchers.withText("Off")))
+
+        scenario.onActivity { activity ->
+            assertFalse(isOverlayKeepScreenOnPreferenceEnabled(activity))
+        }
+
+        // Toggle back so that the default state is kept for other tests
+        Espresso.onView(ViewMatchers.withId(R.id.main_activity_overlay_keep_screen_on_button))
+            .perform(ViewActions.click())
+
+        Espresso.onView(ViewMatchers.withId(R.id.main_activity_config_overlay_keep_screen_on_textview))
+            .check(ViewAssertions.matches(ViewMatchers.withText("On")))
+
+        scenario.onActivity { activity ->
+            assertTrue(isOverlayKeepScreenOnPreferenceEnabled(activity))
+        }
+
+        scenario.close()
+    }
+
+    private fun isOverlayKeepScreenOnPreferenceEnabled(activity: Context): Boolean {
+        return PreferenceManager.getDefaultSharedPreferences(activity)
+            .getBoolean(MainActivity.PREFERENCE_KEY_OVERLAY_KEEP_SCREEN_ON,
+                MainActivity.PREFERENCE_VAL_OVERLAY_KEEP_SCREEN_ON_DEFAULT)
+    }
+
     private fun isOverlayPreferenceEnabled(activity: Context): Boolean {
         return PreferenceManager.getDefaultSharedPreferences(activity)
             .getBoolean(MainActivity.PREFERENCE_KEY_OVERLAY_ENABLED, false)

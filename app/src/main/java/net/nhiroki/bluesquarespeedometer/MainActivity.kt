@@ -66,6 +66,10 @@ class MainActivity : AppCompatActivity() {
 
         // Whether the mini overlay (floating speedometer) should be shown
         const val PREFERENCE_KEY_OVERLAY_ENABLED:String = "preference_overlay_enabled"
+
+        // Whether the display stays on while the mini overlay is shown
+        const val PREFERENCE_KEY_OVERLAY_KEEP_SCREEN_ON:String = "preference_overlay_keep_screen_on"
+        const val PREFERENCE_VAL_OVERLAY_KEEP_SCREEN_ON_DEFAULT:Boolean = true
     }
 
     class MyLocationListener : LocationListener {
@@ -197,6 +201,9 @@ class MainActivity : AppCompatActivity() {
                 this.enableOverlay()
             }
         }
+        this.findViewById<Button>(R.id.main_activity_overlay_keep_screen_on_button).setOnClickListener {
+            this.changeOverlayKeepScreenOnButtonClicked()
+        }
         this.findViewById<Button>(R.id.main_activity_refresh_location_provider_button).setOnClickListener {
             updateLocationProvider()
         }
@@ -205,6 +212,7 @@ class MainActivity : AppCompatActivity() {
 
         this.applyKeepScreenOn()
         this.updateKeepScreenOnText()
+        this.updateOverlayKeepScreenOnText()
         this.updateOverlayButton()
     }
 
@@ -215,6 +223,7 @@ class MainActivity : AppCompatActivity() {
 
         this.applyKeepScreenOn()
         this.updateKeepScreenOnText()
+        this.updateOverlayKeepScreenOnText()
         this.syncOverlayService()
         this.updateOverlayButton()
 
@@ -449,6 +458,23 @@ class MainActivity : AppCompatActivity() {
             .apply()
         this.applyKeepScreenOn()
         this.updateKeepScreenOnText()
+    }
+
+    private fun isOverlayKeepScreenOnEnabled(): Boolean {
+        return PreferenceManager.getDefaultSharedPreferences(this).getBoolean(PREFERENCE_KEY_OVERLAY_KEEP_SCREEN_ON, PREFERENCE_VAL_OVERLAY_KEEP_SCREEN_ON_DEFAULT)
+    }
+
+    private fun updateOverlayKeepScreenOnText() {
+        findViewById<TextView>(R.id.main_activity_config_overlay_keep_screen_on_textview).setText(if (this.isOverlayKeepScreenOnEnabled()) R.string.option_on else R.string.option_off)
+    }
+
+    private fun changeOverlayKeepScreenOnButtonClicked() {
+        PreferenceManager.getDefaultSharedPreferences(this).edit()
+            .putBoolean(PREFERENCE_KEY_OVERLAY_KEEP_SCREEN_ON, !this.isOverlayKeepScreenOnEnabled())
+            .apply()
+        this.updateOverlayKeepScreenOnText()
+        // The running overlay service notices the change through its
+        // OnSharedPreferenceChangeListener and updates its window flags
     }
 
     private fun hasLocationPermission(): Boolean {

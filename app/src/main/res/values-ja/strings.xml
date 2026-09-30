@@ -61,6 +61,7 @@
     <string name="metrics_altitude_short">高度</string>
 
     <string name="config_keep_screen_on">画面を点けたままにする</string>
+    <string name="config_overlay_keep_screen_on">オーバーレイ中も画面を点けたままにする</string>
     <string name="option_on">オン</string>
     <string name="option_off">オフ</string>
 
