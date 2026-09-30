@@ -31,4 +31,25 @@ object OverlayDragClose {
     ): Boolean =
         centerX >= left - slop && centerX <= right + slop &&
             centerY >= top - slop && centerY <= bottom + slop
+
+    /**
+     * True when a release over the badge should close the overlay: either the
+     * dragged overlay's center is on the badge, or the point the user is
+     * holding (the finger) is on it. Checking both means a quick flick is
+     * caught at ACTION_UP even when the last ACTION_MOVE was short of the
+     * badge, and gripping the overlay by an edge still works.
+     */
+    fun isArmed(
+        centerX: Int,
+        centerY: Int,
+        fingerX: Int,
+        fingerY: Int,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+        slop: Int
+    ): Boolean =
+        isOverCloseTarget(centerX, centerY, left, top, right, bottom, slop) ||
+            isOverCloseTarget(fingerX, fingerY, left, top, right, bottom, slop)
 }

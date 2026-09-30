@@ -43,4 +43,17 @@ class OverlayDragCloseTest {
         assertFalse(OverlayDragClose.isOverCloseTarget(72, 180, 470, 1900, 610, 2040, 40))
         assertFalse(OverlayDragClose.isOverCloseTarget(540, 100, 470, 1900, 610, 2040, 40))
     }
+
+    @Test
+    fun armsWhenEitherTheCenterOrTheFingerIsOverTheBadge() {
+        val l = 470; val t = 1900; val r = 610; val b = 2040; val slop = 40
+        // Center on the badge, finger holding an edge far away -> armed
+        assertTrue(OverlayDragClose.isArmed(540, 1970, 400, 1000, l, t, r, b, slop))
+        // Finger on the badge, overlay center lagging behind -> armed
+        assertTrue(OverlayDragClose.isArmed(400, 1000, 540, 1970, l, t, r, b, slop))
+        // Both outside -> not armed
+        assertFalse(OverlayDragClose.isArmed(400, 1000, 420, 1200, l, t, r, b, slop))
+        // A quick flick whose last point is beyond the slop -> not armed
+        assertFalse(OverlayDragClose.isArmed(700, 2200, 760, 2300, l, t, r, b, slop))
+    }
 }
