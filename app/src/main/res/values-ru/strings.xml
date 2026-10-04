@@ -61,6 +61,7 @@
     <string name="metrics_altitude_short">ВЫС</string>
 
     <string name="config_keep_screen_on">Держать экран включённым</string>
+    <string name="config_overlay_keep_screen_on">Держать экран включённым (оверлей)</string>
     <string name="option_on">Вкл</string>
     <string name="option_off">Выкл</string>
 

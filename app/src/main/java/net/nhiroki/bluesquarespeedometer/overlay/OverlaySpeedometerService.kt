@@ -7,9 +7,12 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
+import android.graphics.Point
+import android.graphics.drawable.GradientDrawable
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -50,6 +53,12 @@ class OverlaySpeedometerService : android.app.Service() {
         private const val PREF_KEY_OVERLAY_X: String = "overlay_window_x"
         private const val PREF_KEY_OVERLAY_Y: String = "overlay_window_y"
 
+        // The badge that appears at the bottom of the screen while dragging;
+        // releasing the overlay on top of it closes the overlay.
+        private const val CLOSE_TARGET_SIZE_DP: Int = 56
+        private const val CLOSE_TARGET_BOTTOM_MARGIN_DP: Int = 36
+        private const val CLOSE_ARM_SLOP_DP: Int = 16
+
         @Volatile
         private var _running: Boolean = false
 
@@ -62,6 +71,12 @@ class OverlaySpeedometerService : android.app.Service() {
     private var _windowParams: WindowManager.LayoutParams? = null
     private var _locationListener: LocationListener? = null
     private var _touchSlop: Int = 0
+    private var _prefsListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
+
+    // Drag-to-close state
+    private var _closeTargetView: TextView? = null
+    private var _closeTargetRect: IntArray? = null
+    private var _closeTargetArmed: Boolean = false
 
     // Dragging state
     private var _dragStartX: Int = 0
@@ -92,6 +107,16 @@ class OverlaySpeedometerService : android.app.Service() {
         this._locationManager = this.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         this._locationListener = MyLocationListener(this)
         this._touchSlop = ViewConfiguration.get(this).scaledTouchSlop
+
+        // React to preference changes made while the overlay is showing,
+        // e.g. toggling "keep screen on (overlay)" in the main view.
+        this._prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == MainActivity.PREFERENCE_KEY_OVERLAY_KEEP_SCREEN_ON) {
+                this.applyKeepScreenOnFlag()
+            }
+        }
+        PreferenceManager.getDefaultSharedPreferences(this)
+            .registerOnSharedPreferenceChangeListener(this._prefsListener)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -131,6 +156,12 @@ class OverlaySpeedometerService : android.app.Service() {
 
     override fun onDestroy() {
         _running = false
+        this._prefsListener?.let { listener ->
+            PreferenceManager.getDefaultSharedPreferences(this)
+                .unregisterOnSharedPreferenceChangeListener(listener)
+        }
+        this._prefsListener = null
+        this.hideCloseTarget()
         // The overlay is gone; do not restart it on the next app start
         PreferenceManager.getDefaultSharedPreferences(this).edit()
             .putBoolean(MainActivity.PREFERENCE_KEY_OVERLAY_ENABLED, false)
@@ -208,6 +239,9 @@ class OverlaySpeedometerService : android.app.Service() {
             PixelFormat.TRANSLUCENT
         )
         params.gravity = Gravity.TOP or Gravity.START
+        if (this.isOverlayKeepScreenOnEnabled()) {
+            params.flags = params.flags or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        }
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         params.x = prefs.getInt(PREF_KEY_OVERLAY_X, dpToPx(12))
@@ -248,20 +282,37 @@ class OverlaySpeedometerService : android.app.Service() {
                 val dy = event.rawY - _dragStartRawY
                 if (!_dragging && (abs(dx) > _touchSlop || abs(dy) > _touchSlop)) {
                     _dragging = true
+                    this.showCloseTarget()
                 }
                 if (_dragging) {
                     params.x = _dragStartX + dx.toInt()
                     params.y = _dragStartY + dy.toInt()
                     this._windowManager?.updateViewLayout(view, params)
+                    this.updateCloseTargetArmed(params, view)
                     return true
                 }
                 return false
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+            MotionEvent.ACTION_UP -> {
                 if (_dragging) {
                     savePosition(params)
                     _dragging = false
                     // Swallow the event so that a drag is not reported as a click
+                    val dismiss = _closeTargetArmed
+                    this.hideCloseTarget()
+                    if (dismiss) {
+                        // Released on top of the close badge: same path as the x button
+                        stopSelf()
+                    }
+                    return true
+                }
+                return false
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                if (_dragging) {
+                    savePosition(params)
+                    _dragging = false
+                    this.hideCloseTarget()
                     return true
                 }
                 return false
@@ -270,11 +321,140 @@ class OverlaySpeedometerService : android.app.Service() {
         return false
     }
 
+    /**
+     * Shows the close badge at the bottom center of the screen while a drag is
+     * in progress. The badge window is not touchable: it is pure feedback, the
+     * drag gesture keeps going to the overlay window.
+     */
+    private fun showCloseTarget() {
+        if (this._closeTargetView != null) {
+            return
+        }
+        val windowManager = this._windowManager ?: return
+
+        val sizePx = this.dpToPx(CLOSE_TARGET_SIZE_DP)
+        val screen = this.screenPixelSize()
+        val left = OverlayDragClose.closeTargetLeft(screen[0], sizePx)
+        val top = OverlayDragClose.closeTargetTop(screen[1], sizePx, this.dpToPx(CLOSE_TARGET_BOTTOM_MARGIN_DP))
+        this._closeTargetRect = intArrayOf(left, top, left + sizePx, top + sizePx)
+
+        val targetView = TextView(this)
+        targetView.text = getString(R.string.overlay_close_button)
+        targetView.textSize = 30f
+        targetView.gravity = Gravity.CENTER
+        targetView.contentDescription = getString(R.string.menu_this_app_overlay_hide)
+        this.paintCloseTarget(targetView, false)
+
+        val params = WindowManager.LayoutParams(
+            sizePx,
+            sizePx,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            } else {
+                @Suppress("DEPRECATION")
+                WindowManager.LayoutParams.TYPE_PHONE
+            },
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        )
+        params.gravity = Gravity.TOP or Gravity.START
+        params.x = left
+        params.y = top
+
+        try {
+            windowManager.addView(targetView, params)
+        } catch (e: RuntimeException) {
+            // Overlay permission was revoked mid-drag; simply show no badge
+            this._closeTargetRect = null
+            return
+        }
+        this._closeTargetView = targetView
+        this._closeTargetArmed = false
+    }
+
+    private fun paintCloseTarget(targetView: TextView, armed: Boolean) {
+        targetView.background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(if (armed) 0xFFE53935.toInt() else 0x66FF3B30.toInt())
+            setStroke(this@OverlaySpeedometerService.dpToPx(2), if (armed) 0xFFFFFFFF.toInt() else 0xFFFF5252.toInt())
+        }
+        targetView.setTextColor(if (armed) 0xFFFFFFFF.toInt() else 0xFFFFB3AF.toInt())
+    }
+
+    private fun hideCloseTarget() {
+        val targetView = this._closeTargetView ?: return
+        this._closeTargetView = null
+        this._closeTargetRect = null
+        this._closeTargetArmed = false
+        try {
+            this._windowManager?.removeViewImmediate(targetView)
+        } catch (e: IllegalArgumentException) {
+            // already detached
+        }
+    }
+
+    /** Highlights the badge while the dragged overlay's center is over it. */
+    private fun updateCloseTargetArmed(params: WindowManager.LayoutParams, overlayView: View) {
+        val rect = this._closeTargetRect ?: return
+        val targetView = this._closeTargetView ?: return
+
+        val centerX = params.x + overlayView.width / 2
+        val centerY = params.y + overlayView.height / 2
+        val armed = OverlayDragClose.isOverCloseTarget(
+            centerX, centerY, rect[0], rect[1], rect[2], rect[3], this.dpToPx(CLOSE_ARM_SLOP_DP))
+
+        if (armed != this._closeTargetArmed) {
+            this._closeTargetArmed = armed
+            this.paintCloseTarget(targetView, armed)
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun screenPixelSize(): IntArray {
+        val size = Point()
+        this._windowManager!!.defaultDisplay.getRealSize(size)
+        return intArrayOf(size.x, size.y)
+    }
+
     private fun savePosition(params: WindowManager.LayoutParams) {
         PreferenceManager.getDefaultSharedPreferences(this).edit()
             .putInt(PREF_KEY_OVERLAY_X, params.x)
             .putInt(PREF_KEY_OVERLAY_Y, params.y)
             .apply()
+    }
+
+    private fun isOverlayKeepScreenOnEnabled(): Boolean {
+        return PreferenceManager.getDefaultSharedPreferences(this).getBoolean(
+            MainActivity.PREFERENCE_KEY_OVERLAY_KEEP_SCREEN_ON,
+            MainActivity.PREFERENCE_VAL_OVERLAY_KEEP_SCREEN_ON_DEFAULT
+        )
+    }
+
+    /**
+     * Keeps the window's FLAG_KEEP_SCREEN_ON in sync with the preference. The
+     * flag on the overlay window is honored by the system for any visible
+     * window, so the display stays on while the overlay is shown (like it does
+     * for dialogs and activity windows).
+     */
+    private fun applyKeepScreenOnFlag() {
+        val overlayView = this._overlayView ?: return
+        val params = this._windowParams ?: return
+
+        val keepOn = this.isOverlayKeepScreenOnEnabled()
+        val has = (params.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) != 0
+        if (keepOn == has) {
+            return
+        }
+        params.flags = if (keepOn) {
+            params.flags or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        } else {
+            params.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON.inv()
+        }
+        try {
+            this._windowManager?.updateViewLayout(overlayView, params)
+        } catch (e: IllegalArgumentException) {
+            // window was detached in the meantime
+        }
     }
 
     private fun openApp() {
