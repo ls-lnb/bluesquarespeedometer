@@ -54,6 +54,46 @@ class MainActivityTest {
     }
 
     @Test
+    fun testKeepScreenOnOption() {
+        ActivityScenario.launch(MainActivity::class.java)
+        Thread.sleep(3000)
+
+        Assume.assumeTrue(Build.VERSION.SDK_INT >= 24)
+
+        // Default of the option is "On", matching the historic behavior
+        Espresso.onView(ViewMatchers.withId(R.id.main_activity_config_keep_screen_on_textview))
+            .perform(ViewActions.scrollTo())
+            .check(ViewAssertions.matches(ViewMatchers.withText("On")))
+
+        Espresso.onView(ViewMatchers.withId(R.id.main_activity_keep_screen_on_button))
+            .perform(ViewActions.scrollTo(), ViewActions.click())
+
+        Espresso.onView(ViewMatchers.withId(R.id.main_activity_config_keep_screen_on_textview))
+            .check(ViewAssertions.matches(ViewMatchers.withText("Off")))
+
+        // Toggle back so that the default state is kept for other tests
+        Espresso.onView(ViewMatchers.withId(R.id.main_activity_keep_screen_on_button))
+            .perform(ViewActions.scrollTo(), ViewActions.click())
+
+        Espresso.onView(ViewMatchers.withId(R.id.main_activity_config_keep_screen_on_textview))
+            .check(ViewAssertions.matches(ViewMatchers.withText("On")))
+    }
+
+    @Test
+    fun testOverlayButtonShown() {
+        ActivityScenario.launch(MainActivity::class.java)
+        Thread.sleep(3000)
+
+        Assume.assumeTrue(Build.VERSION.SDK_INT >= 24)
+
+        // The overlay button must be there, in its "show" state initially
+        Espresso.onView(ViewMatchers.withId(R.id.main_activity_overlay_button))
+            .perform(ViewActions.scrollTo())
+            .check(ViewAssertions.matches(ViewMatchers.withText("Show mini overlay")))
+            .check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
+    }
+
+    @Test
     fun testJustStartingUpJapanese() {
         // Looks like the way of setting language has changed in SDK24 (N).
         // Older version does not change output even if we run the following language setting code.

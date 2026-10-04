@@ -14,6 +14,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.OnApplyWindowInsetsListener
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import net.nhiroki.bluesquarespeedometer.DisplayFormat
 import net.nhiroki.bluesquarespeedometer.MainActivity
 import net.nhiroki.bluesquarespeedometer.R
 
@@ -65,6 +66,8 @@ class DigitalSpeedometer1Activity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         findViewById<TextView>(R.id.digital_meter1_textview).setText("...")
+        findViewById<TextView>(R.id.digital_meter1_altitude_textview).setText("-")
+        updateAltitudeUnitText()
         updateLocationProvider()
         updateUnitText()
     }
@@ -111,6 +114,17 @@ class DigitalSpeedometer1Activity : AppCompatActivity() {
     }
 
     // Confidence for each unit is on comment on MainActivity
+    private fun updateAltitudeUnitText() {
+        val altitudeUnit:Int = PreferenceManager.getDefaultSharedPreferences(this).getInt(MainActivity.PREFERENCE_KEY_ALTITUDE_UNIT, MainActivity.PREFERENCE_VAL_ALTITUDE_DEFAULT)!!
+        findViewById<TextView>(R.id.digital_meter1_altitude_unit_textview).setText(
+            when(altitudeUnit) {
+                MainActivity.PREFERENCE_VAL_ALTITUDE_FEET -> R.string.unit_feet
+                else -> R.string.unit_meter
+            }
+        )
+    }
+
+    // Confidence for each unit is on comment on MainActivity
     private fun updateLocation(location: Location) {
         val speedUnit:Int = PreferenceManager.getDefaultSharedPreferences(this).getInt(MainActivity.PREFERENCE_KEY_SPEED_UNIT, MainActivity.PREFERENCE_VAL_SPEED_UNIT_DEFAULT )!!
 
@@ -129,5 +143,11 @@ class DigitalSpeedometer1Activity : AppCompatActivity() {
             }
         }
         updateUnitText()
+
+        // Altitude shown at the bottom of the fullscreen view
+        val altitudeUnit:Int = PreferenceManager.getDefaultSharedPreferences(this).getInt(MainActivity.PREFERENCE_KEY_ALTITUDE_UNIT, MainActivity.PREFERENCE_VAL_ALTITUDE_DEFAULT)!!
+        val altitudeReading:DisplayFormat.AltitudeReading = DisplayFormat.readAltitude(this, location)
+        findViewById<TextView>(R.id.digital_meter1_altitude_textview).setText(DisplayFormat.altitudeText(altitudeReading.meters, altitudeUnit))
+        updateAltitudeUnitText()
     }
 }

@@ -54,4 +54,23 @@
     <string name="general_button_retry">再試行</string>
 
     <string name="licensing_source_code_header">ソースコード</string>
+
+    <string name="menu_this_app_overlay_show">ミニオーバーレイを表示</string>
+    <string name="menu_this_app_overlay_hide">ミニオーバーレイを隠す</string>
+
+    <string name="metrics_altitude_short">高度</string>
+
+    <string name="config_keep_screen_on">画面を点けたままにする</string>
+    <string name="option_on">オン</string>
+    <string name="option_off">オフ</string>
+
+    <string name="overlay_permission_description">ミニオーバーレイは、他のアプリ（例：ナビゲーションアプリ）の上に速度と高度を表示します。Android ではこの機能に「他のアプリの上に表示」の権限が必要です。</string>
+    <string name="overlay_permission_grant_prompt">「他のアプリの上に表示」権限を許可</string>
+    <string name="overlay_permission_denied">「他のアプリの上に表示」権限が許可されていないため、オーバーレイを表示できません。</string>
+    <string name="overlay_location_required_description">ミニオーバーレイは速度と高度を表示するために位置情報権限が必要です。</string>
+    <string name="overlay_notification_channel">ミニ速度計オーバーレイ</string>
+    <string name="overlay_notification_title">ミニ速度計オーバーレイ</string>
+    <string name="overlay_notification_text">他のアプリの上に速度と高度のオーバーレイを表示しています。</string>
+    <string name="overlay_notification_action_stop">停止</string>
+    <string name="overlay_close_button">×</string>
 </resources>

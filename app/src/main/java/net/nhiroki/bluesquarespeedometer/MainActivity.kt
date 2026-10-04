@@ -3,10 +3,12 @@ package net.nhiroki.bluesquarespeedometer
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.AlertDialog
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -14,22 +16,25 @@ import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
-import android.location.altitude.AltitudeConverter
 import android.os.Build
+import android.provider.Settings
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.preference.PreferenceManager
 import android.view.View
 import android.widget.Button
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.core.app.ActivityCompat
 import androidx.core.view.OnApplyWindowInsetsListener
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import net.nhiroki.bluesquarespeedometer.overlay.OverlaySpeedometerService
 import net.nhiroki.bluesquarespeedometer.viewers.DigitalSpeedometer1Activity
-import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 
@@ -54,6 +59,13 @@ class MainActivity : AppCompatActivity() {
         const val PREFERENCE_VAL_AIR_PRESSURE_DEFAULT:Int = 0
         const val PREFERENCE_VAL_AIR_PRESSURE_HPA:Int = 0
         const val PREFERENCE_VAL_AIR_PRESSURE_INHG:Int = 1
+
+        // Whether the regular (non fullscreen) view keeps the display on
+        const val PREFERENCE_KEY_KEEP_SCREEN_ON:String = "preference_keep_screen_on"
+        const val PREFERENCE_VAL_KEEP_SCREEN_ON_DEFAULT:Boolean = true
+
+        // Whether the mini overlay (floating speedometer) should be shown
+        const val PREFERENCE_KEY_OVERLAY_ENABLED:String = "preference_overlay_enabled"
     }
 
     class MyLocationListener : LocationListener {
@@ -98,6 +110,11 @@ class MainActivity : AppCompatActivity() {
     var _sensorManager:SensorManager? = null
     var _sensorEventListener: SensorEventListener? = null
 
+    private var _pendingOverlayEnable:Boolean = false
+    private lateinit var _locationPermissionRequest: ActivityResultLauncher<Array<String>>
+    private lateinit var _overlayPermissionRequest: ActivityResultLauncher<Intent>
+    private lateinit var _notificationPermissionRequest: ActivityResultLauncher<String>
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         this.enableEdgeToEdge()
@@ -118,7 +135,32 @@ class MainActivity : AppCompatActivity() {
 
         val locationPermissionRequest = registerForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions()
-        ) {}
+        ) {
+            if (this._pendingOverlayEnable) {
+                this.enableOverlay()
+            }
+        }
+        this._locationPermissionRequest = locationPermissionRequest
+
+        this._overlayPermissionRequest = registerForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) {
+            if (Settings.canDrawOverlays(this)) {
+                this.enableOverlay()
+            } else {
+                this._pendingOverlayEnable = false
+                this.updateOverlayButton()
+                Toast.makeText(this, R.string.overlay_permission_denied, Toast.LENGTH_LONG).show()
+            }
+        }
+
+        this._notificationPermissionRequest = registerForActivityResult(
+            ActivityResultContracts.RequestPermission()
+        ) {
+            // Continue even when notification permission is denied; the overlay still works,
+            // the ongoing notification then only shows up in the task manager.
+            this.startOverlayService()
+        }
 
         this.findViewById<Button>(R.id.main_activity_grant_location_button).setOnClickListener {
             locationPermissionRequest.launch(arrayOf(
@@ -145,17 +187,36 @@ class MainActivity : AppCompatActivity() {
         this.findViewById<Button>(R.id.main_activity_air_pressure_unit_button).setOnClickListener {
             changePressureUnitButtonClicked()
         }
+        this.findViewById<Button>(R.id.main_activity_keep_screen_on_button).setOnClickListener {
+            changeKeepScreenOnButtonClicked()
+        }
+        this.findViewById<Button>(R.id.main_activity_overlay_button).setOnClickListener {
+            if (this.isOverlayEnabled()) {
+                this.disableOverlay()
+            } else {
+                this.enableOverlay()
+            }
+        }
         this.findViewById<Button>(R.id.main_activity_refresh_location_provider_button).setOnClickListener {
             updateLocationProvider()
         }
 
         findViewById<TextView>(R.id.main_activity_version_info_footer).setText(getString(R.string.app_name) + " " + BuildConfig.VERSION_NAME)
+
+        this.applyKeepScreenOn()
+        this.updateKeepScreenOnText()
+        this.updateOverlayButton()
     }
 
     override fun onResume() {
         super.onResume()
 
         updateOptionsShown()
+
+        this.applyKeepScreenOn()
+        this.updateKeepScreenOnText()
+        this.syncOverlayService()
+        this.updateOverlayButton()
 
         val fineLocationPermission:Boolean = ActivityCompat.checkSelfPermission( this, Manifest.permission.ACCESS_FINE_LOCATION ) == PackageManager.PERMISSION_GRANTED
         val coarseLocationPermission:Boolean = ActivityCompat.checkSelfPermission( this, Manifest.permission.ACCESS_COARSE_LOCATION ) == PackageManager.PERMISSION_GRANTED
@@ -370,6 +431,143 @@ class MainActivity : AppCompatActivity() {
 
     }
 
+    private fun isKeepScreenOnEnabled(): Boolean {
+        return PreferenceManager.getDefaultSharedPreferences(this).getBoolean(PREFERENCE_KEY_KEEP_SCREEN_ON, PREFERENCE_VAL_KEEP_SCREEN_ON_DEFAULT)
+    }
+
+    private fun applyKeepScreenOn() {
+        findViewById<View>(R.id.main).keepScreenOn = this.isKeepScreenOnEnabled()
+    }
+
+    private fun updateKeepScreenOnText() {
+        findViewById<TextView>(R.id.main_activity_config_keep_screen_on_textview).setText(if (this.isKeepScreenOnEnabled()) R.string.option_on else R.string.option_off)
+    }
+
+    private fun changeKeepScreenOnButtonClicked() {
+        PreferenceManager.getDefaultSharedPreferences(this).edit()
+            .putBoolean(PREFERENCE_KEY_KEEP_SCREEN_ON, !this.isKeepScreenOnEnabled())
+            .apply()
+        this.applyKeepScreenOn()
+        this.updateKeepScreenOnText()
+    }
+
+    private fun hasLocationPermission(): Boolean {
+        val fineLocationPermission:Boolean = ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val coarseLocationPermission:Boolean = ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        return fineLocationPermission || coarseLocationPermission
+    }
+
+    private fun isOverlayEnabled(): Boolean {
+        return PreferenceManager.getDefaultSharedPreferences(this).getBoolean(PREFERENCE_KEY_OVERLAY_ENABLED, false)
+    }
+
+    /**
+     * Starts the mini overlay, asking for the "Display over other apps"
+     * permission, the location permission and the notification permission when
+     * they are not granted yet.
+     */
+    private fun enableOverlay() {
+        if (!Settings.canDrawOverlays(this)) {
+            this._pendingOverlayEnable = true
+            AlertDialog.Builder(this)
+                .setTitle(R.string.menu_this_app_overlay_show)
+                .setMessage(R.string.overlay_permission_description)
+                .setPositiveButton(R.string.overlay_permission_grant_prompt) { _, _ -> this.requestOverlayPermission() }
+                .setNegativeButton(android.R.string.cancel) { _, _ -> this._pendingOverlayEnable = false }
+                .setOnCancelListener { this._pendingOverlayEnable = false }
+                .create().show()
+            return
+        }
+
+        if (!this.hasLocationPermission()) {
+            this._pendingOverlayEnable = true
+            AlertDialog.Builder(this)
+                .setTitle(R.string.menu_this_app_overlay_show)
+                .setMessage(R.string.overlay_location_required_description)
+                .setPositiveButton(R.string.permission_location_grant_prompt) { _, _ ->
+                    this._locationPermissionRequest.launch(arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION))
+                }
+                .setNegativeButton(android.R.string.cancel) { _, _ -> this._pendingOverlayEnable = false }
+                .setOnCancelListener { this._pendingOverlayEnable = false }
+                .create().show()
+            return
+        }
+
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            this._notificationPermissionRequest.launch(Manifest.permission.POST_NOTIFICATIONS)
+            return
+        }
+
+        this.startOverlayService()
+    }
+
+    private fun requestOverlayPermission() {
+        val overlaySettingsIntent = Intent(
+            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+            Uri.parse("package:" + this.packageName)
+        )
+        try {
+            this._overlayPermissionRequest.launch(overlaySettingsIntent)
+        } catch (e:ActivityNotFoundException) {
+            this._pendingOverlayEnable = false
+            Toast.makeText(this, R.string.overlay_permission_denied, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun startOverlayService() {
+        this._pendingOverlayEnable = false
+        val serviceIntent = Intent(this, OverlaySpeedometerService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            this.startForegroundService(serviceIntent)
+        } else {
+            this.startService(serviceIntent)
+        }
+        PreferenceManager.getDefaultSharedPreferences(this).edit()
+            .putBoolean(PREFERENCE_KEY_OVERLAY_ENABLED, true)
+            .apply()
+        this.updateOverlayButton()
+        // Shrink this app away, leaving only the small overlay on top of other apps
+        this.moveTaskToBack(true)
+    }
+
+    private fun disableOverlay() {
+        this.stopService(Intent(this, OverlaySpeedometerService::class.java))
+        PreferenceManager.getDefaultSharedPreferences(this).edit()
+            .putBoolean(PREFERENCE_KEY_OVERLAY_ENABLED, false)
+            .apply()
+        this.updateOverlayButton()
+    }
+
+    private fun updateOverlayButton() {
+        findViewById<Button>(R.id.main_activity_overlay_button).setText(if (this.isOverlayEnabled()) R.string.menu_this_app_overlay_hide else R.string.menu_this_app_overlay_show)
+    }
+
+    /**
+     * Keeps the overlay service and its preference in sync: restarts the
+     * overlay after the process was killed and drops a stale preference when
+     * the required permissions are gone.
+     */
+    private fun syncOverlayService() {
+        if (this.isOverlayEnabled() && !OverlaySpeedometerService.isRunning()) {
+            if (Settings.canDrawOverlays(this) && this.hasLocationPermission()) {
+                val serviceIntent = Intent(this, OverlaySpeedometerService::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    this.startForegroundService(serviceIntent)
+                } else {
+                    this.startService(serviceIntent)
+                }
+            } else {
+                PreferenceManager.getDefaultSharedPreferences(this).edit()
+                    .putBoolean(PREFERENCE_KEY_OVERLAY_ENABLED, false)
+                    .apply()
+            }
+        } else if (!this.isOverlayEnabled() && OverlaySpeedometerService.isRunning()) {
+            this.stopService(Intent(this, OverlaySpeedometerService::class.java))
+        }
+    }
+
     private fun degreeToDisplayText(degree:Double, positiveAsix:String, negativeAxis:String): String {
         var degreeRemain:Double = degree
         var axisText = positiveAsix
@@ -536,36 +734,18 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        if (Build.VERSION.SDK_INT >= 34 && !location.hasMslAltitude()) {
-            // There are both cases that msl altitude is automatically added and not
-            try {
-                AltitudeConverter().addMslAltitudeToLocation(this, location)
-            } catch (e:IllegalArgumentException) {
-                // ignore, just continue without MSL altitude
-                // There is a documented case
-            } catch (e:IOException) {
-                // IOException is also documented
-            }
-        }
+        val altitudeReading:DisplayFormat.AltitudeReading = DisplayFormat.readAltitude(this, location)
 
         val altitudeUnit:Int = PreferenceManager.getDefaultSharedPreferences(this).getInt(PREFERENCE_KEY_ALTITUDE_UNIT, PREFERENCE_VAL_ALTITUDE_DEFAULT)!!
-        var altitudeMeterToShow:Double
-        if (Build.VERSION.SDK_INT >= 34 && location.hasMslAltitude()) {
-            altitudeMeterToShow = location.mslAltitudeMeters
-            findViewById<TextView>(R.id.main_activity_altitude_caption_textview).setText(R.string.metrics_msl_altitude)
-        } else {
-            // This case the height is WGS84 based
-            // https://developer.android.com/reference/android/location/Location#getAltitude()
-            altitudeMeterToShow = location.altitude
-            findViewById<TextView>(R.id.main_activity_altitude_caption_textview).setText(R.string.metrics_wgs84_altitude)
-        }
+        val altitudeMeterToShow:Double = altitudeReading.meters
+        findViewById<TextView>(R.id.main_activity_altitude_caption_textview).setText(if (altitudeReading.isMsl) R.string.metrics_msl_altitude else R.string.metrics_wgs84_altitude)
         when(altitudeUnit) {
             PREFERENCE_VAL_ALTITUDE_METERS -> {
-                findViewById<TextView>(R.id.main_activity_altitude_digits_textview).setText(altitudeMeterToShow.toInt().toString())
+                findViewById<TextView>(R.id.main_activity_altitude_digits_textview).setText(DisplayFormat.altitudeText(altitudeMeterToShow, altitudeUnit))
                 findViewById<TextView>(R.id.main_activity_altitude_unit_textview).setText(R.string.unit_meter)
             }
             PREFERENCE_VAL_ALTITUDE_FEET -> {
-                findViewById<TextView>(R.id.main_activity_altitude_digits_textview).setText((altitudeMeterToShow / 0.3048).toInt().toString())
+                findViewById<TextView>(R.id.main_activity_altitude_digits_textview).setText(DisplayFormat.altitudeText(altitudeMeterToShow, altitudeUnit))
                 findViewById<TextView>(R.id.main_activity_altitude_unit_textview).setText(R.string.unit_feet)
             }
         }

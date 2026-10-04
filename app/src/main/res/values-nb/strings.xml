@@ -54,4 +54,23 @@
     <string name="general_button_retry">Prøv igjen</string>
 
     <string name="licensing_source_code_header">Kildekode</string>
+
+    <string name="menu_this_app_overlay_show">Vis mini-overlegg</string>
+    <string name="menu_this_app_overlay_hide">Skjul mini-overlegg</string>
+
+    <string name="metrics_altitude_short">ALT</string>
+
+    <string name="config_keep_screen_on">Hold skjermen på</string>
+    <string name="option_on">På</string>
+    <string name="option_off">Av</string>
+
+    <string name="overlay_permission_description">Mini-overlegget viser farten og høyden din oppå andre apper (f.eks. en navigasjonsapp). Android krever tillatelsen \"Vis over andre apper\" for dette.</string>
+    <string name="overlay_permission_grant_prompt">Gi tillatelsen \"Vis over andre apper\"</string>
+    <string name="overlay_permission_denied">Overlegget kan ikke vises fordi tillatelsen \"Vis over andre apper\" ikke er gitt.</string>
+    <string name="overlay_location_required_description">Mini-overlegget trenger plasseringstillatelsen for å vise farten og høyden.</string>
+    <string name="overlay_notification_channel">Mini hastighetsmåler-overlegg</string>
+    <string name="overlay_notification_title">Mini hastighetsmåler-overlegg</string>
+    <string name="overlay_notification_text">Fart- og høydeoverlegget vises oppå andre apper.</string>
+    <string name="overlay_notification_action_stop">Stopp</string>
+    <string name="overlay_close_button">×</string>
 </resources>
