@@ -216,6 +216,11 @@ class OverlaySpeedometerService : android.app.Service() {
         overlayView.findViewById<TextView>(R.id.overlay_speedometer_close_textview).setOnClickListener {
             stopSelf()
         }
+        // Tapping the body of the overlay brings the app back to the front
+        // (dragging is handled by the touch listener below and does not click)
+        overlayView.setOnClickListener {
+            openApp()
+        }
         // Drag anywhere on the window (children are not clickable, so presses
         // reach the root view which handles dragging and plain clicks).
         overlayView.setOnTouchListener { view, event -> handleDrag(view, event) }

@@ -4,6 +4,10 @@ import android.app.LocaleManager
 import android.content.Context
 import android.os.Build
 import android.os.LocaleList
+import android.preference.PreferenceManager
+import android.provider.Settings
+import android.view.View
+import android.widget.ScrollView
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import androidx.test.core.app.ActivityScenario
@@ -14,6 +18,8 @@ import androidx.test.espresso.matcher.ViewMatchers
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assume
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -55,42 +61,88 @@ class MainActivityTest {
 
     @Test
     fun testKeepScreenOnOption() {
-        ActivityScenario.launch(MainActivity::class.java)
+        val scenario = ActivityScenario.launch(MainActivity::class.java)
         Thread.sleep(3000)
 
         Assume.assumeTrue(Build.VERSION.SDK_INT >= 24)
 
+        // The screen on CI is small; scroll the config section into view
+        scrollMainViewToBottom(scenario)
+
         // Default of the option is "On", matching the historic behavior
         Espresso.onView(ViewMatchers.withId(R.id.main_activity_config_keep_screen_on_textview))
-            .perform(ViewActions.scrollTo())
             .check(ViewAssertions.matches(ViewMatchers.withText("On")))
+            .check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
 
         Espresso.onView(ViewMatchers.withId(R.id.main_activity_keep_screen_on_button))
-            .perform(ViewActions.scrollTo(), ViewActions.click())
+            .check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
+            .perform(ViewActions.click())
 
         Espresso.onView(ViewMatchers.withId(R.id.main_activity_config_keep_screen_on_textview))
             .check(ViewAssertions.matches(ViewMatchers.withText("Off")))
 
+        scenario.onActivity { activity ->
+            assertFalse(activity.findViewById<View>(R.id.main).keepScreenOn)
+        }
+
         // Toggle back so that the default state is kept for other tests
         Espresso.onView(ViewMatchers.withId(R.id.main_activity_keep_screen_on_button))
-            .perform(ViewActions.scrollTo(), ViewActions.click())
+            .perform(ViewActions.click())
 
         Espresso.onView(ViewMatchers.withId(R.id.main_activity_config_keep_screen_on_textview))
             .check(ViewAssertions.matches(ViewMatchers.withText("On")))
+
+        scenario.onActivity { activity ->
+            assertTrue(activity.findViewById<View>(R.id.main).keepScreenOn)
+        }
+
+        scenario.close()
     }
 
     @Test
     fun testOverlayButtonShown() {
-        ActivityScenario.launch(MainActivity::class.java)
+        val scenario = ActivityScenario.launch(MainActivity::class.java)
         Thread.sleep(3000)
 
         Assume.assumeTrue(Build.VERSION.SDK_INT >= 24)
+        // This test is about asking for the "Display over other apps" permission
+        Assume.assumeFalse(Settings.canDrawOverlays(this.context))
 
-        // The overlay button must be there, in its "show" state initially
+        scrollMainViewToBottom(scenario)
+
+        // The overlay button is always shown, in its "show" state initially
         Espresso.onView(ViewMatchers.withId(R.id.main_activity_overlay_button))
-            .perform(ViewActions.scrollTo())
             .check(ViewAssertions.matches(ViewMatchers.withText("Show mini overlay")))
             .check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
+
+        // Tapping it explains and requests the overlay permission, but does not
+        // enable the overlay itself while the permission is missing
+        Espresso.onView(ViewMatchers.withId(R.id.main_activity_overlay_button))
+            .perform(ViewActions.click())
+
+        Espresso.onView(ViewMatchers.withText(R.string.overlay_permission_description))
+            .check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
+
+        scenario.onActivity { activity ->
+            assertFalse(isOverlayPreferenceEnabled(activity))
+        }
+
+        Espresso.pressBack()
+        scenario.close()
+    }
+
+    private fun isOverlayPreferenceEnabled(activity: Context): Boolean {
+        return PreferenceManager.getDefaultSharedPreferences(activity)
+            .getBoolean(MainActivity.PREFERENCE_KEY_OVERLAY_ENABLED, false)
+    }
+
+    private fun scrollMainViewToBottom(scenario: ActivityScenario<MainActivity>) {
+        scenario.onActivity { activity ->
+            val scrollView = activity.findViewById<ScrollView>(R.id.main)
+            // ScrollView#scrollTo clamps to the content size
+            scrollView.scrollTo(0, Int.MAX_VALUE / 2)
+        }
+        Thread.sleep(500)
     }
 
     @Test
