@@ -59,6 +59,11 @@ class OverlaySpeedometerService : android.app.Service() {
         private const val CLOSE_TARGET_BOTTOM_MARGIN_DP: Int = 36
         private const val CLOSE_ARM_SLOP_DP: Int = 16
 
+        // Where the overlay opens when it has no saved position, and where it
+        // goes again after being closed with the drag-to-close gesture
+        private const val DEFAULT_POSITION_X_DP: Int = 12
+        private const val DEFAULT_POSITION_Y_DP: Int = 120
+
         @Volatile
         private var _running: Boolean = false
 
@@ -244,8 +249,8 @@ class OverlaySpeedometerService : android.app.Service() {
         }
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        params.x = prefs.getInt(PREF_KEY_OVERLAY_X, dpToPx(12))
-        params.y = prefs.getInt(PREF_KEY_OVERLAY_Y, dpToPx(120))
+        params.x = prefs.getInt(PREF_KEY_OVERLAY_X, this.dpToPx(DEFAULT_POSITION_X_DP))
+        params.y = prefs.getInt(PREF_KEY_OVERLAY_Y, this.dpToPx(DEFAULT_POSITION_Y_DP))
 
         overlayView.findViewById<TextView>(R.id.overlay_speedometer_close_textview).setOnClickListener {
             stopSelf()
@@ -288,21 +293,31 @@ class OverlaySpeedometerService : android.app.Service() {
                     params.x = _dragStartX + dx.toInt()
                     params.y = _dragStartY + dy.toInt()
                     this._windowManager?.updateViewLayout(view, params)
-                    this.updateCloseTargetArmed(params, view)
+                    this.updateCloseTargetArmed(params, view, event.rawX, event.rawY)
                     return true
                 }
                 return false
             }
             MotionEvent.ACTION_UP -> {
                 if (_dragging) {
-                    savePosition(params)
                     _dragging = false
-                    // Swallow the event so that a drag is not reported as a click
-                    val dismiss = _closeTargetArmed
+                    // The UP event can be ahead of the last MOVE (quick flick),
+                    // so snap to its position and evaluate the close target
+                    // with these final coordinates instead of the last MOVE.
+                    params.x = _dragStartX + (event.rawX - _dragStartRawX).toInt()
+                    params.y = _dragStartY + (event.rawY - _dragStartRawY).toInt()
+                    this._windowManager?.updateViewLayout(view, params)
+                    val dismiss = this.updateCloseTargetArmed(params, view, event.rawX, event.rawY)
                     this.hideCloseTarget()
+                    // Swallow the event so that a drag is not reported as a click
                     if (dismiss) {
-                        // Released on top of the close badge: same path as the x button
+                        // Released over the close badge: same path as the x
+                        // button, but forget this kill-gesture position so the
+                        // next overlay opens at the default top location again
+                        this.resetPositionToDefaults()
                         stopSelf()
+                    } else {
+                        savePosition(params)
                     }
                     return true
                 }
@@ -393,20 +408,30 @@ class OverlaySpeedometerService : android.app.Service() {
         }
     }
 
-    /** Highlights the badge while the dragged overlay's center is over it. */
-    private fun updateCloseTargetArmed(params: WindowManager.LayoutParams, overlayView: View) {
-        val rect = this._closeTargetRect ?: return
-        val targetView = this._closeTargetView ?: return
+    /**
+     * Highlights the badge while the overlay's center or the point the user
+     * holds is over it; returns the current armed state.
+     */
+    private fun updateCloseTargetArmed(
+        params: WindowManager.LayoutParams,
+        overlayView: View,
+        fingerX: Float,
+        fingerY: Float
+    ): Boolean {
+        val rect = this._closeTargetRect ?: return false
+        val targetView = this._closeTargetView ?: return false
 
         val centerX = params.x + overlayView.width / 2
         val centerY = params.y + overlayView.height / 2
-        val armed = OverlayDragClose.isOverCloseTarget(
-            centerX, centerY, rect[0], rect[1], rect[2], rect[3], this.dpToPx(CLOSE_ARM_SLOP_DP))
+        val armed = OverlayDragClose.isArmed(
+            centerX, centerY, fingerX.toInt(), fingerY.toInt(),
+            rect[0], rect[1], rect[2], rect[3], this.dpToPx(CLOSE_ARM_SLOP_DP))
 
         if (armed != this._closeTargetArmed) {
             this._closeTargetArmed = armed
             this.paintCloseTarget(targetView, armed)
         }
+        return armed
     }
 
     @Suppress("DEPRECATION")
@@ -420,6 +445,14 @@ class OverlaySpeedometerService : android.app.Service() {
         PreferenceManager.getDefaultSharedPreferences(this).edit()
             .putInt(PREF_KEY_OVERLAY_X, params.x)
             .putInt(PREF_KEY_OVERLAY_Y, params.y)
+            .apply()
+    }
+
+    /** Puts the saved position back to the default top-left spot. */
+    private fun resetPositionToDefaults() {
+        PreferenceManager.getDefaultSharedPreferences(this).edit()
+            .putInt(PREF_KEY_OVERLAY_X, this.dpToPx(DEFAULT_POSITION_X_DP))
+            .putInt(PREF_KEY_OVERLAY_Y, this.dpToPx(DEFAULT_POSITION_Y_DP))
             .apply()
     }
 
