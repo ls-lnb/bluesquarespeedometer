@@ -20,18 +20,25 @@ android {
 
     signingConfigs {
         release {
+            // Release signing resolution order:
+            //   1. Shared Gradle properties in ~/.gradle/gradle.properties (common to all local projects)
+            //   2. RELEASE_KEYSTORE_* environment variables (CI)
+            //   3. keystore/keystore.properties inside this repository (optional, gitignored)
             def signingProperties = new Properties()
             def signingPropertiesFile = rootProject.file("keystore/keystore.properties")
             if (signingPropertiesFile.exists()) {
                 signingPropertiesFile.withInputStream { signingProperties.load(it) }
             }
 
-            def storeFilePath = System.getenv("RELEASE_KEYSTORE_FILE") ?: signingProperties.getProperty("storeFile")
+            def sharedProp = { String name -> providers.gradleProperty(name).getOrNull() }
+            def envVar = { String name -> System.getenv(name) }
+
+            def storeFilePath = sharedProp("androidSigning.keystoreFile") ?: envVar("RELEASE_KEYSTORE_FILE") ?: signingProperties.getProperty("storeFile")
             if (storeFilePath != null) {
                 storeFile rootProject.file(storeFilePath)
-                storePassword System.getenv("RELEASE_KEYSTORE_PASSWORD") ?: signingProperties.getProperty("storePassword")
-                keyAlias System.getenv("RELEASE_KEYSTORE_ALIAS") ?: signingProperties.getProperty("keyAlias")
-                keyPassword System.getenv("RELEASE_KEYSTORE_KEY_PASSWORD") ?: signingProperties.getProperty("keyPassword")
+                storePassword sharedProp("androidSigning.keystorePassword") ?: envVar("RELEASE_KEYSTORE_PASSWORD") ?: signingProperties.getProperty("storePassword")
+                keyAlias sharedProp("androidSigning.keyAlias") ?: envVar("RELEASE_KEYSTORE_ALIAS") ?: signingProperties.getProperty("keyAlias") ?: "bluesquarespeedometer"
+                keyPassword sharedProp("androidSigning.keyPassword") ?: envVar("RELEASE_KEYSTORE_KEY_PASSWORD") ?: signingProperties.getProperty("keyPassword")
             }
         }
     }
