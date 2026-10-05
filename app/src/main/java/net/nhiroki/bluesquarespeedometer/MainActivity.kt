@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.net.Uri
 import android.location.Location
 import android.location.LocationListener
@@ -17,6 +18,7 @@ import android.provider.Settings
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.preference.PreferenceManager
+import android.util.TypedValue
 import android.view.View
 import android.widget.Button
 import android.widget.TextView
@@ -33,6 +35,7 @@ import net.nhiroki.bluesquarespeedometer.overlay.OverlaySpeedometerService
 import net.nhiroki.bluesquarespeedometer.viewers.DigitalSpeedometer1Activity
 import java.text.SimpleDateFormat
 import java.util.Date
+import kotlin.math.max
 
 
 class MainActivity : AppCompatActivity() {
@@ -57,6 +60,13 @@ class MainActivity : AppCompatActivity() {
 
         // Whether the mini overlay (floating speedometer) should be shown
         const val PREFERENCE_KEY_OVERLAY_ENABLED:String = "preference_overlay_enabled"
+
+        // The big digits fill this share of their (screen filling) section,
+        // so large sections do not end up with small numbers in them
+        private const val DIGIT_SECTION_FILL_RATIO:Float = 0.5f
+        private const val UNIT_SIZE_RATIO:Float = 0.4f
+        private const val MIN_DIGIT_SIZE_PX:Float = 14f
+        private const val MIN_UNIT_SIZE_PX:Float = 9f
     }
 
     class MyLocationListener : LocationListener {
@@ -157,6 +167,7 @@ class MainActivity : AppCompatActivity() {
         this.applyKeepScreenOn()
         this.updateScreenOnButtonText()
         this.updateOverlayButton()
+        this.setupSectionDigitSizes()
     }
 
     override fun onResume() {
@@ -271,10 +282,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateScreenOnButtonText() {
         // One option now controls both the main view and the mini overlay;
-        // the overlay service follows the same preference.
+        // the overlay service follows the same preference. The landscape
+        // side pane uses the shorter label to fit the narrow button.
         findViewById<Button>(R.id.main_activity_keep_screen_on_button).setText(
             getString(R.string.option_state_format,
-                getString(R.string.config_keep_screen_on),
+                getString(if (this.isLandscape()) R.string.main_button_screen_on_short else R.string.config_keep_screen_on),
                 getString(if (this.isKeepScreenOnEnabled()) R.string.option_on else R.string.option_off)))
     }
 
@@ -286,6 +298,42 @@ class MainActivity : AppCompatActivity() {
         this.updateScreenOnButtonText()
         // A running overlay service notices the change through its
         // OnSharedPreferenceChangeListener and updates its window flags
+    }
+
+    private fun isLandscape(): Boolean {
+        return resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    }
+
+    /**
+     * Sizes the big digits relative to their weighted, screen filling section
+     * and keeps them fitted when the layout changes, e.g. when the accuracy
+     * details grow or shrink, in portrait as well as in landscape.
+     */
+    private fun setupSectionDigitSizes() {
+        this.fitDigitsToSection(R.id.main_activity_speed_section, R.id.main_activity_speed_digits_textview, R.id.main_activity_speed_unit_textview)
+        this.fitDigitsToSection(R.id.main_activity_altitude_section, R.id.main_activity_altitude_digits_textview, R.id.main_activity_altitude_unit_textview)
+    }
+
+    private fun fitDigitsToSection(sectionResId: Int, digitsResId: Int, unitResId: Int) {
+        val section = findViewById<View>(sectionResId)
+        val digits = findViewById<TextView>(digitsResId)
+        val unit = findViewById<TextView>(unitResId)
+
+        val fit = {
+            val sectionHeight = section.height
+            if (sectionHeight > 0) {
+                val digitSize = max(sectionHeight * DIGIT_SECTION_FILL_RATIO, MIN_DIGIT_SIZE_PX)
+                val unitSize = max(digitSize * UNIT_SIZE_RATIO, MIN_UNIT_SIZE_PX)
+                if (digits.textSize != digitSize) {
+                    digits.setTextSize(TypedValue.COMPLEX_UNIT_PX, digitSize)
+                }
+                if (unit.textSize != unitSize) {
+                    unit.setTextSize(TypedValue.COMPLEX_UNIT_PX, unitSize)
+                }
+            }
+        }
+        section.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> fit() }
+        section.post { fit() }
     }
 
     private fun hasLocationPermission(): Boolean {
@@ -378,7 +426,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateOverlayButton() {
-        findViewById<Button>(R.id.main_activity_overlay_button).setText(if (this.isOverlayEnabled()) R.string.menu_this_app_overlay_hide else R.string.menu_this_app_overlay_show)
+        // The landscape side pane uses the short label with an On/Off state
+        findViewById<Button>(R.id.main_activity_overlay_button).setText(
+            if (this.isLandscape()) {
+                getString(R.string.option_state_format,
+                    getString(R.string.main_button_overlay_short),
+                    getString(if (this.isOverlayEnabled()) R.string.option_on else R.string.option_off))
+            } else if (this.isOverlayEnabled()) {
+                getString(R.string.menu_this_app_overlay_hide)
+            } else {
+                getString(R.string.menu_this_app_overlay_show)
+            })
     }
 
     /**

@@ -7,6 +7,7 @@
     android:background="?backgroundColor"
     android:id="@+id/main"
     android:fillViewport="true"
+    android:saveEnabled="false"
     >
     <LinearLayout
         android:layout_width="match_parent"
@@ -65,6 +66,7 @@
             android:layout_marginVertical="4sp"
             />
         <LinearLayout
+            android:id="@+id/main_activity_speed_section"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
@@ -106,6 +108,7 @@
             android:layout_marginVertical="4sp"
             />
         <LinearLayout
+            android:id="@+id/main_activity_altitude_section"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"

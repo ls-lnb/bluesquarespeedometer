@@ -14,6 +14,8 @@
     <string name="menu_this_app_digital_speedometer_fullscreen">Digital Speedometer (fullscreen)</string>
     <string name="menu_this_app_licensing_information">License information</string>
     <string name="main_button_fullscreen">Fullscreen</string>
+    <string name="main_button_overlay_short">Overlay</string>
+    <string name="main_button_screen_on_short">Screen on</string>
     <string name="settings_title">Settings</string>
     <string name="menu_this_app_overlay_show">Show mini overlay</string>
     <string name="menu_this_app_overlay_hide">Hide mini overlay</string>

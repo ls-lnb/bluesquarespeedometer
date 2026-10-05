@@ -56,6 +56,8 @@
     <string name="licensing_source_code_header">소스 코드</string>
 
     <string name="main_button_fullscreen">전체 화면</string>
+    <string name="main_button_overlay_short">오버레이</string>
+    <string name="main_button_screen_on_short">화면 켜두기</string>
     <string name="settings_title">설정</string>
     <string name="menu_this_app_overlay_show">미니 오버레이 표시</string>
     <string name="menu_this_app_overlay_hide">미니 오버레이 숨기기</string>

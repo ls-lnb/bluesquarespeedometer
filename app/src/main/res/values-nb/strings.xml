@@ -56,6 +56,8 @@
     <string name="licensing_source_code_header">Kildekode</string>
 
     <string name="main_button_fullscreen">Fullskjerm</string>
+    <string name="main_button_overlay_short">Overlegg</string>
+    <string name="main_button_screen_on_short">Skjerm på</string>
     <string name="settings_title">Innstillinger</string>
     <string name="menu_this_app_overlay_show">Vis mini-overlegg</string>
     <string name="menu_this_app_overlay_hide">Skjul mini-overlegg</string>

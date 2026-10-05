@@ -56,6 +56,8 @@
     <string name="licensing_source_code_header">Исходный код</string>
 
     <string name="main_button_fullscreen">Полный экран</string>
+    <string name="main_button_overlay_short">Оверлей</string>
+    <string name="main_button_screen_on_short">Экран</string>
     <string name="settings_title">Настройки</string>
     <string name="menu_this_app_overlay_show">Показать мини-оверлей</string>
     <string name="menu_this_app_overlay_hide">Скрыть мини-оверлей</string>

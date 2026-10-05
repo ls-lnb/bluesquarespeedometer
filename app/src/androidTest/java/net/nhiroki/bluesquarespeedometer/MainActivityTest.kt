@@ -222,9 +222,9 @@ class MainActivityTest {
 
     private fun scrollMainViewToBottom(scenario: ActivityScenario<MainActivity>) {
         scenario.onActivity { activity ->
-            val scrollView = activity.findViewById<ScrollView>(R.id.main)
+            val scrollView = activity.findViewById<View>(R.id.main) as? ScrollView
             // ScrollView#scrollTo clamps to the content size
-            scrollView.scrollTo(0, Int.MAX_VALUE / 2)
+            scrollView?.scrollTo(0, Int.MAX_VALUE / 2)
         }
         Thread.sleep(500)
     }
