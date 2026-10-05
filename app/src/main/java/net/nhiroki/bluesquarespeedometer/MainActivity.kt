@@ -98,11 +98,23 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         this.enableEdgeToEdge()
         setContentView(R.layout.activity_main)
+        // Keep the layout's own padding (which leaves room for curved
+        // display edges) and add the system bar / display cutout insets to it.
+        val insetTarget = findViewById<View>(R.id.main)
+        val baseLeft = insetTarget.paddingLeft
+        val baseTop = insetTarget.paddingTop
+        val baseRight = insetTarget.paddingRight
+        val baseBottom = insetTarget.paddingBottom
         ViewCompat.setOnApplyWindowInsetsListener(
-            findViewById<View?>(R.id.main),
+            insetTarget,
             OnApplyWindowInsetsListener { v: View?, insets: WindowInsetsCompat? ->
                 val systemBars = insets!!.getInsets(WindowInsetsCompat.Type.systemBars())
-                v!!.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
+                val cutout = insets.getInsets(WindowInsetsCompat.Type.displayCutout())
+                v!!.setPadding(
+                    baseLeft + max(systemBars.left, cutout.left),
+                    baseTop + max(systemBars.top, cutout.top),
+                    baseRight + max(systemBars.right, cutout.right),
+                    baseBottom + max(systemBars.bottom, cutout.bottom))
                 insets
             })
 

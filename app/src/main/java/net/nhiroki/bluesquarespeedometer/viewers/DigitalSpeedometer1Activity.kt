@@ -14,6 +14,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.OnApplyWindowInsetsListener
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import kotlin.math.max
 import net.nhiroki.bluesquarespeedometer.DisplayFormat
 import net.nhiroki.bluesquarespeedometer.MainActivity
 import net.nhiroki.bluesquarespeedometer.R
@@ -42,11 +43,23 @@ class DigitalSpeedometer1Activity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContentView(R.layout.activity_viewers_digital_meter1)
+        // Keep the layout's own padding (curved display edges) and add
+        // the system bar / display cutout insets to it
+        val insetTarget = findViewById<View>(R.id.main)
+        val baseLeft = insetTarget.paddingLeft
+        val baseTop = insetTarget.paddingTop
+        val baseRight = insetTarget.paddingRight
+        val baseBottom = insetTarget.paddingBottom
         ViewCompat.setOnApplyWindowInsetsListener(
-            findViewById<View?>(R.id.main),
+            insetTarget,
             OnApplyWindowInsetsListener { v: View?, insets: WindowInsetsCompat? ->
                 val systemBars = insets!!.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.systemBars())
-                v!!.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
+                val cutout = insets.getInsets(WindowInsetsCompat.Type.displayCutout())
+                v!!.setPadding(
+                    baseLeft + max(systemBars.left, cutout.left),
+                    baseTop + max(systemBars.top, cutout.top),
+                    baseRight + max(systemBars.right, cutout.right),
+                    baseBottom + max(systemBars.bottom, cutout.bottom))
                 insets
             })
 

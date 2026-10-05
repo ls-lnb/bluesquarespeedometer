@@ -8,6 +8,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.core.view.OnApplyWindowInsetsListener
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import kotlin.math.max
 
 class LicensingInformationActivity : AppCompatActivity() {
     // Could not include into values/strings.xml, possibly due to length limitation
@@ -219,11 +220,23 @@ class LicensingInformationActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContentView(R.layout.activity_licensing_information)
+        // Keep the layout's own padding (curved display edges) and add
+        // the system bar / display cutout insets to it
+        val insetTarget = findViewById<View>(R.id.main)
+        val baseLeft = insetTarget.paddingLeft
+        val baseTop = insetTarget.paddingTop
+        val baseRight = insetTarget.paddingRight
+        val baseBottom = insetTarget.paddingBottom
         ViewCompat.setOnApplyWindowInsetsListener(
-            findViewById<View?>(R.id.main),
+            insetTarget,
             OnApplyWindowInsetsListener { v: View?, insets: WindowInsetsCompat? ->
                 val systemBars = insets!!.getInsets(WindowInsetsCompat.Type.systemBars())
-                v!!.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
+                val cutout = insets.getInsets(WindowInsetsCompat.Type.displayCutout())
+                v!!.setPadding(
+                    baseLeft + max(systemBars.left, cutout.left),
+                    baseTop + max(systemBars.top, cutout.top),
+                    baseRight + max(systemBars.right, cutout.right),
+                    baseBottom + max(systemBars.bottom, cutout.bottom))
                 insets
             })
 

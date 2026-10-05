@@ -7,7 +7,10 @@
     android:background="?backgroundColor"
     android:id="@+id/main"
     android:saveEnabled="false"
-    android:padding="8dp"
+    android:paddingLeft="16dp"
+    android:paddingRight="16dp"
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp"
     tools:context=".MainActivity"
     >
     <LinearLayout
