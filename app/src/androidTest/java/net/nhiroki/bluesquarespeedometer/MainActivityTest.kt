@@ -2,12 +2,14 @@ package net.nhiroki.bluesquarespeedometer
 
 import android.app.LocaleManager
 import android.content.Context
+import android.content.pm.ActivityInfo
 import android.os.Build
 import android.os.LocaleList
 import android.preference.PreferenceManager
 import android.provider.Settings
 import android.view.View
 import android.widget.ScrollView
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import androidx.test.core.app.ActivityScenario
@@ -205,6 +207,85 @@ class MainActivityTest {
         Thread.sleep(500)
         Espresso.onView(ViewMatchers.withText("Speed"))
             .check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
+
+        scenario.close()
+    }
+
+    @Test
+    fun testDigitsStayInsideTheirSection() {
+        val scenario = ActivityScenario.launch(MainActivity::class.java)
+        Thread.sleep(3000)
+
+        Assume.assumeTrue(Build.VERSION.SDK_INT >= 24)
+
+        // A long reading is the case that used to overflow the section width
+        scenario.onActivity { activity ->
+            activity.findViewById<TextView>(R.id.main_activity_speed_digits_textview).setText("888")
+            activity.findViewById<TextView>(R.id.main_activity_altitude_digits_textview).setText("8888")
+        }
+        Thread.sleep(500)
+
+        scenario.onActivity { activity ->
+            for (ids in listOf(
+                    Pair(R.id.main_activity_speed_section, R.id.main_activity_speed_digits_textview),
+                    Pair(R.id.main_activity_altitude_section, R.id.main_activity_altitude_digits_textview))) {
+                val section = activity.findViewById<View>(ids.first)
+                val digits = activity.findViewById<TextView>(ids.second)
+                val unit = activity.findViewById<TextView>(
+                    if (ids.first == R.id.main_activity_speed_section) R.id.main_activity_speed_unit_textview
+                    else R.id.main_activity_altitude_unit_textview)
+
+                assertTrue("digits must keep a readable size", digits.textSize > 0f)
+                assertTrue(
+                    "digits (${digits.width}px) and unit (${unit.width}px) must fit the section (${section.width}px)",
+                    digits.width + unit.width <= section.width)
+            }
+        }
+
+        scenario.close()
+    }
+
+    @Test
+    fun testLandscapeSplitsIntoMetricsAndButtonPane() {
+        val scenario = ActivityScenario.launch(MainActivity::class.java)
+        Thread.sleep(3000)
+
+        Assume.assumeTrue(Build.VERSION.SDK_INT >= 24)
+
+        scenario.onActivity { activity ->
+            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        }
+        Thread.sleep(3000)
+
+        // Every button is reachable without scrolling
+        for (buttonId in listOf(
+                R.id.main_activity_meter_car1_button,
+                R.id.main_activity_overlay_button,
+                R.id.main_activity_keep_screen_on_button,
+                R.id.main_activity_settings_button)) {
+            Espresso.onView(ViewMatchers.withId(buttonId))
+                .check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
+        }
+
+        // The metrics stay in the left pane, the buttons sit in the right pane
+        scenario.onActivity { activity ->
+            val section = activity.findViewById<View>(R.id.main_activity_speed_section)
+            val button = activity.findViewById<View>(R.id.main_activity_settings_button)
+            val sectionLocation = IntArray(2)
+            val buttonLocation = IntArray(2)
+            section.getLocationOnScreen(sectionLocation)
+            button.getLocationOnScreen(buttonLocation)
+
+            assertTrue(
+                "buttons (x=${buttonLocation[0]}) must be beside the metrics (x=${sectionLocation[0]}, width=${section.width})",
+                buttonLocation[0] >= sectionLocation[0] + section.width)
+        }
+
+        // Leave the device in portrait for the other tests
+        scenario.onActivity { activity ->
+            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+        Thread.sleep(2000)
 
         scenario.close()
     }

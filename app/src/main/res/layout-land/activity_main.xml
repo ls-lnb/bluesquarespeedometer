@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -59,11 +60,19 @@
     </LinearLayout>
 
     <!-- Split view: metrics and accuracy on the left, buttons on the right.
-         Everything is weighted, so the screen never needs scrolling. -->
-    <LinearLayout
+         The row fills the screen, so normally nothing needs scrolling; the
+         ScrollView only kicks in when the content does not fit, e.g. with a
+         permission alert on screen or a large font scale. -->
+    <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
+        android:fillViewport="true"
+        android:saveEnabled="false"
+        >
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
         android:orientation="horizontal"
         >
         <LinearLayout
@@ -208,6 +217,10 @@
                 android:layout_weight="1"
                 android:layout_marginBottom="4dp"
                 android:text="@string/main_button_fullscreen"
+                android:maxLines="1"
+                app:autoSizeTextType="uniform"
+                app:autoSizeMinTextSize="9sp"
+                app:autoSizeMaxTextSize="14sp"
                 />
             <Button
                 android:id="@+id/main_activity_overlay_button"
@@ -216,6 +229,10 @@
                 android:layout_weight="1"
                 android:layout_marginBottom="4dp"
                 android:text="@string/menu_this_app_overlay_show"
+                android:maxLines="1"
+                app:autoSizeTextType="uniform"
+                app:autoSizeMinTextSize="9sp"
+                app:autoSizeMaxTextSize="14sp"
                 />
             <Button
                 android:id="@+id/main_activity_keep_screen_on_button"
@@ -224,6 +241,10 @@
                 android:layout_weight="1"
                 android:layout_marginBottom="4dp"
                 android:text="@string/config_keep_screen_on"
+                android:maxLines="1"
+                app:autoSizeTextType="uniform"
+                app:autoSizeMinTextSize="9sp"
+                app:autoSizeMaxTextSize="14sp"
                 />
             <Button
                 android:id="@+id/main_activity_settings_button"
@@ -231,7 +252,12 @@
                 android:layout_height="0dp"
                 android:layout_weight="1"
                 android:text="@string/settings_title"
+                android:maxLines="1"
+                app:autoSizeTextType="uniform"
+                app:autoSizeMinTextSize="9sp"
+                app:autoSizeMaxTextSize="14sp"
                 />
         </LinearLayout>
     </LinearLayout>
+    </ScrollView>
 </LinearLayout>
