@@ -5,7 +5,6 @@ import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.ActivityNotFoundException
 import android.content.Context
-import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
@@ -18,6 +17,8 @@ import android.provider.Settings
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.preference.PreferenceManager
+import android.text.Editable
+import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.View
 import android.widget.Button
@@ -28,9 +29,6 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.app.ActivityCompat
-import androidx.core.view.OnApplyWindowInsetsListener
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import net.nhiroki.bluesquarespeedometer.overlay.OverlaySpeedometerService
 import net.nhiroki.bluesquarespeedometer.viewers.DigitalSpeedometer1Activity
 import java.text.SimpleDateFormat
@@ -67,6 +65,13 @@ class MainActivity : AppCompatActivity() {
         private const val UNIT_SIZE_RATIO:Float = 0.4f
         private const val MIN_DIGIT_SIZE_PX:Float = 14f
         private const val MIN_UNIT_SIZE_PX:Float = 9f
+
+        // Readings the digit width is planned for, so the digits do not get
+        // resized whenever the number of digits changes
+        private const val ASSUMED_SPEED_DIGITS:Int = 3
+        private const val ASSUMED_ALTITUDE_DIGITS:Int = 4
+
+        private const val STATE_PENDING_OVERLAY_ENABLE:String = "pendingOverlayEnable"
     }
 
     class MyLocationListener : LocationListener {
@@ -100,23 +105,9 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         // Keep the layout's own padding (which leaves room for curved
         // display edges) and add the system bar / display cutout insets to it.
-        val insetTarget = findViewById<View>(R.id.main)
-        val baseLeft = insetTarget.paddingLeft
-        val baseTop = insetTarget.paddingTop
-        val baseRight = insetTarget.paddingRight
-        val baseBottom = insetTarget.paddingBottom
-        ViewCompat.setOnApplyWindowInsetsListener(
-            insetTarget,
-            OnApplyWindowInsetsListener { v: View?, insets: WindowInsetsCompat? ->
-                val systemBars = insets!!.getInsets(WindowInsetsCompat.Type.systemBars())
-                val cutout = insets.getInsets(WindowInsetsCompat.Type.displayCutout())
-                v!!.setPadding(
-                    baseLeft + max(systemBars.left, cutout.left),
-                    baseTop + max(systemBars.top, cutout.top),
-                    baseRight + max(systemBars.right, cutout.right),
-                    baseBottom + max(systemBars.bottom, cutout.bottom))
-                insets
-            })
+        findViewById<View>(R.id.main).applyWindowInsetsPreservingPadding()
+
+        this._pendingOverlayEnable = savedInstanceState?.getBoolean(STATE_PENDING_OVERLAY_ENABLE) ?: false
 
         this._locationManager = this.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         this._locationListener = MyLocationListener(this)
@@ -211,6 +202,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        // Rotating while the overlay permission dialog is up must not lose the
+        // request to enable the overlay once the permission is granted
+        outState.putBoolean(STATE_PENDING_OVERLAY_ENABLE, this._pendingOverlayEnable)
+        super.onSaveInstanceState(outState)
+    }
+
     override fun onStop() {
         this._locationManager!!.removeUpdates(this._locationListener!!)
         this._displayedHeightM = Double.NaN
@@ -258,30 +256,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun changeProviderButtonClicked() {
-        val locationProviders:List<String> = _locationManager!!.getProviders(false)
-
-        val currentPreferenceLocationProvider:String = PreferenceManager.getDefaultSharedPreferences(this).getString(PREFERENCE_KEY_LOCATION_PROVIDER, "")!!
-
-        var checkedItem:Int = -1
-
-        var candidates:Array<CharSequence> = Array(locationProviders.size, {
-            val ret:String = locationProviders.get(it)
-            if (currentPreferenceLocationProvider.equals(ret)) {
-                checkedItem = it
-            }
-            ret
-        })
-
-        AlertDialog.Builder(this).setTitle(R.string.dialog_select_location_provider).setSingleChoiceItems(candidates, checkedItem, DialogInterface.OnClickListener {
-                dialog, which ->
-            val prefEdit =
-                PreferenceManager.getDefaultSharedPreferences(this).edit()
-            prefEdit.putString(PREFERENCE_KEY_LOCATION_PROVIDER, locationProviders.get(which))
-            prefEdit.apply()
-            dialog.cancel()
-            this.updateLocationProvider()
-
-        }).create().show()
+        showLocationProviderDialog(this) { this.updateLocationProvider() }
     }
 
     private fun isKeepScreenOnEnabled(): Boolean {
@@ -322,29 +297,50 @@ class MainActivity : AppCompatActivity() {
      * details grow or shrink, in portrait as well as in landscape.
      */
     private fun setupSectionDigitSizes() {
-        this.fitDigitsToSection(R.id.main_activity_speed_section, R.id.main_activity_speed_digits_textview, R.id.main_activity_speed_unit_textview)
-        this.fitDigitsToSection(R.id.main_activity_altitude_section, R.id.main_activity_altitude_digits_textview, R.id.main_activity_altitude_unit_textview)
+        this.fitDigitsToSection(R.id.main_activity_speed_section, R.id.main_activity_speed_digits_textview, R.id.main_activity_speed_unit_textview, ASSUMED_SPEED_DIGITS)
+        this.fitDigitsToSection(R.id.main_activity_altitude_section, R.id.main_activity_altitude_digits_textview, R.id.main_activity_altitude_unit_textview, ASSUMED_ALTITUDE_DIGITS)
     }
 
-    private fun fitDigitsToSection(sectionResId: Int, digitsResId: Int, unitResId: Int) {
+    private fun fitDigitsToSection(sectionResId: Int, digitsResId: Int, unitResId: Int, assumedDigits: Int) {
         val section = findViewById<View>(sectionResId)
         val digits = findViewById<TextView>(digitsResId)
         val unit = findViewById<TextView>(unitResId)
 
         val fit = {
             val sectionHeight = section.height
-            if (sectionHeight > 0) {
-                val digitSize = max(sectionHeight * DIGIT_SECTION_FILL_RATIO, MIN_DIGIT_SIZE_PX)
-                val unitSize = max(digitSize * UNIT_SIZE_RATIO, MIN_UNIT_SIZE_PX)
-                if (digits.textSize != digitSize) {
+            val sectionWidth = section.width
+            if (sectionHeight > 0 && sectionWidth > 0) {
+                val digitSize = DigitSizing.textSizePx(
+                    sectionHeightPx = sectionHeight,
+                    availableWidthPx = sectionWidth - digits.paddingEnd,
+                    digitCount = max(digits.text.length, assumedDigits),
+                    unitCharCount = unit.text.length,
+                    unitSizeRatio = UNIT_SIZE_RATIO,
+                    fillRatio = DIGIT_SECTION_FILL_RATIO,
+                    minSizePx = MIN_DIGIT_SIZE_PX)
+                if (DigitSizing.isSignificantChange(digits.textSize, digitSize)) {
                     digits.setTextSize(TypedValue.COMPLEX_UNIT_PX, digitSize)
                 }
-                if (unit.textSize != unitSize) {
+                val unitSize = max(digits.textSize * UNIT_SIZE_RATIO, MIN_UNIT_SIZE_PX)
+                if (DigitSizing.isSignificantChange(unit.textSize, unitSize)) {
                     unit.setTextSize(TypedValue.COMPLEX_UNIT_PX, unitSize)
                 }
             }
         }
+
         section.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> fit() }
+        // The digit count drives the width cap, so refit when the value changes
+        digits.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {
+            }
+
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+            }
+
+            override fun afterTextChanged(s: Editable?) {
+                fit()
+            }
+        })
         section.post { fit() }
     }
 
@@ -543,40 +539,16 @@ class MainActivity : AppCompatActivity() {
      */
     fun updateLocation(location:Location) {
         val speedUnit:Int = PreferenceManager.getDefaultSharedPreferences(this).getInt(PREFERENCE_KEY_SPEED_UNIT, PREFERENCE_VAL_SPEED_UNIT_DEFAULT)!!
-        when(speedUnit) {
-            PREFERENCE_VAL_SPEED_UNIT_KM_H -> {
-                findViewById<TextView>(R.id.main_activity_speed_digits_textview).setText((location.speed * 3.6).toInt().toString())
-                findViewById<TextView>(R.id.main_activity_speed_unit_textview).setText(R.string.unit_km_per_hour)
-            }
-            PREFERENCE_VAL_SPEED_UNIT_KNOT -> {
-                findViewById<TextView>(R.id.main_activity_speed_digits_textview).setText((location.speed * 3.6 / 1.852).toInt().toString())
-                findViewById<TextView>(R.id.main_activity_speed_unit_textview).setText(R.string.unit_knot)
-            }
-            PREFERENCE_VAL_SPEED_UNIT_M_S -> {
-                findViewById<TextView>(R.id.main_activity_speed_digits_textview).setText((location.speed).toInt().toString())
-                findViewById<TextView>(R.id.main_activity_speed_unit_textview).setText(R.string.unit_meter_per_second)
-            }
-            PREFERENCE_VAL_SPEED_UNIT_MPH -> {
-                findViewById<TextView>(R.id.main_activity_speed_digits_textview).setText((location.speed * 3.6 / 1.609344).toInt().toString())
-                findViewById<TextView>(R.id.main_activity_speed_unit_textview).setText(R.string.unit_mile_per_hour)
-            }
-        }
+        findViewById<TextView>(R.id.main_activity_speed_digits_textview).setText(DisplayFormat.speedText(location.speed, speedUnit))
+        findViewById<TextView>(R.id.main_activity_speed_unit_textview).setText(DisplayFormat.speedUnitName(this, speedUnit))
 
         val altitudeReading:DisplayFormat.AltitudeReading = DisplayFormat.readAltitude(this, location)
 
         val altitudeUnit:Int = PreferenceManager.getDefaultSharedPreferences(this).getInt(PREFERENCE_KEY_ALTITUDE_UNIT, PREFERENCE_VAL_ALTITUDE_DEFAULT)!!
         val altitudeMeterToShow:Double = altitudeReading.meters
         findViewById<TextView>(R.id.main_activity_altitude_caption_textview).setText(if (altitudeReading.isMsl) R.string.metrics_msl_altitude else R.string.metrics_wgs84_altitude)
-        when(altitudeUnit) {
-            PREFERENCE_VAL_ALTITUDE_METERS -> {
-                findViewById<TextView>(R.id.main_activity_altitude_digits_textview).setText(DisplayFormat.altitudeText(altitudeMeterToShow, altitudeUnit))
-                findViewById<TextView>(R.id.main_activity_altitude_unit_textview).setText(R.string.unit_meter)
-            }
-            PREFERENCE_VAL_ALTITUDE_FEET -> {
-                findViewById<TextView>(R.id.main_activity_altitude_digits_textview).setText(DisplayFormat.altitudeText(altitudeMeterToShow, altitudeUnit))
-                findViewById<TextView>(R.id.main_activity_altitude_unit_textview).setText(R.string.unit_feet)
-            }
-        }
+        findViewById<TextView>(R.id.main_activity_altitude_digits_textview).setText(DisplayFormat.altitudeText(altitudeMeterToShow, altitudeUnit))
+        findViewById<TextView>(R.id.main_activity_altitude_unit_textview).setText(DisplayFormat.altitudeUnitName(this, altitudeUnit))
         this._displayedHeightM = altitudeMeterToShow
 
         var currentCordinateText:String = ""
