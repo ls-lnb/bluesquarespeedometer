@@ -55,14 +55,16 @@
 
     <string name="licensing_source_code_header">Kildekode</string>
 
+    <string name="main_button_fullscreen">Fullskjerm</string>
+    <string name="settings_title">Innstillinger</string>
     <string name="menu_this_app_overlay_show">Vis mini-overlegg</string>
     <string name="menu_this_app_overlay_hide">Skjul mini-overlegg</string>
 
     <string name="metrics_altitude_short">ALT</string>
 
     <string name="config_keep_screen_on">Hold skjermen på</string>
-    <string name="config_overlay_keep_screen_on">Hold skjermen på (overlegg)</string>
     <string name="option_on">På</string>
+    <string name="option_state_format">%1$s: %2$s</string>
     <string name="option_off">Av</string>
 
     <string name="overlay_permission_description">Mini-overlegget viser farten og høyden din oppå andre apper (f.eks. en navigasjonsapp). Android krever tillatelsen \"Vis over andre apper\" for dette.</string>

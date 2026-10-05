@@ -55,14 +55,16 @@
 
     <string name="licensing_source_code_header">Исходный код</string>
 
+    <string name="main_button_fullscreen">Полный экран</string>
+    <string name="settings_title">Настройки</string>
     <string name="menu_this_app_overlay_show">Показать мини-оверлей</string>
     <string name="menu_this_app_overlay_hide">Скрыть мини-оверлей</string>
 
     <string name="metrics_altitude_short">ВЫС</string>
 
     <string name="config_keep_screen_on">Держать экран включённым</string>
-    <string name="config_overlay_keep_screen_on">Держать экран включённым (оверлей)</string>
     <string name="option_on">Вкл</string>
+    <string name="option_state_format">%1$s: %2$s</string>
     <string name="option_off">Выкл</string>
 
     <string name="overlay_permission_description">Мини-оверлей показывает скорость и высоту поверх других приложений (например, навигатора). Android требует для этого разрешение «Поверх других приложений».</string>

@@ -114,9 +114,9 @@ class OverlaySpeedometerService : android.app.Service() {
         this._touchSlop = ViewConfiguration.get(this).scaledTouchSlop
 
         // React to preference changes made while the overlay is showing,
-        // e.g. toggling "keep screen on (overlay)" in the main view.
+        // e.g. toggling "Keep screen on" in the main view.
         this._prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == MainActivity.PREFERENCE_KEY_OVERLAY_KEEP_SCREEN_ON) {
+            if (key == MainActivity.PREFERENCE_KEY_KEEP_SCREEN_ON) {
                 this.applyKeepScreenOnFlag()
             }
         }
@@ -244,7 +244,7 @@ class OverlaySpeedometerService : android.app.Service() {
             PixelFormat.TRANSLUCENT
         )
         params.gravity = Gravity.TOP or Gravity.START
-        if (this.isOverlayKeepScreenOnEnabled()) {
+        if (this.isKeepScreenOnEnabled()) {
             params.flags = params.flags or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
         }
 
@@ -456,10 +456,11 @@ class OverlaySpeedometerService : android.app.Service() {
             .apply()
     }
 
-    private fun isOverlayKeepScreenOnEnabled(): Boolean {
+    // One preference drives both the main view and the overlay
+    private fun isKeepScreenOnEnabled(): Boolean {
         return PreferenceManager.getDefaultSharedPreferences(this).getBoolean(
-            MainActivity.PREFERENCE_KEY_OVERLAY_KEEP_SCREEN_ON,
-            MainActivity.PREFERENCE_VAL_OVERLAY_KEEP_SCREEN_ON_DEFAULT
+            MainActivity.PREFERENCE_KEY_KEEP_SCREEN_ON,
+            MainActivity.PREFERENCE_VAL_KEEP_SCREEN_ON_DEFAULT
         )
     }
 
@@ -473,7 +474,7 @@ class OverlaySpeedometerService : android.app.Service() {
         val overlayView = this._overlayView ?: return
         val params = this._windowParams ?: return
 
-        val keepOn = this.isOverlayKeepScreenOnEnabled()
+        val keepOn = this.isKeepScreenOnEnabled()
         val has = (params.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) != 0
         if (keepOn == has) {
             return

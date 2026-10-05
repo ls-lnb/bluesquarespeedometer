@@ -17,6 +17,7 @@ import androidx.test.espresso.assertion.ViewAssertions
 import androidx.test.espresso.matcher.ViewMatchers
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import org.hamcrest.Matchers.containsString
 import org.junit.Assume
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -60,28 +61,69 @@ class MainActivityTest {
     }
 
     @Test
+    fun testMainPageSectionsAndButtons() {
+        val scenario = ActivityScenario.launch(MainActivity::class.java)
+        Thread.sleep(3000)
+
+        Assume.assumeTrue(Build.VERSION.SDK_INT >= 24)
+
+        // The metric sections are still on the main page. The coordinate view
+        // always carries text ("---" until the first location fix), unlike the
+        // accuracy details which are empty for the first seconds.
+        Espresso.onView(ViewMatchers.withId(R.id.main_activity_speed_digits_textview))
+            .check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
+        Espresso.onView(ViewMatchers.withId(R.id.main_activity_altitude_digits_textview))
+            .check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
+        Espresso.onView(ViewMatchers.withId(R.id.main_activity_current_coordinate_textview))
+            .check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
+
+        // The configuration sections are gone; four buttons remain
+        scrollMainViewToBottom(scenario)
+        for (buttonId in listOf(
+                R.id.main_activity_meter_car1_button,
+                R.id.main_activity_overlay_button,
+                R.id.main_activity_keep_screen_on_button,
+                R.id.main_activity_settings_button)) {
+            Espresso.onView(ViewMatchers.withId(buttonId))
+                .check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
+        }
+
+        Espresso.onView(ViewMatchers.withId(R.id.main_activity_meter_car1_button))
+            .check(ViewAssertions.matches(ViewMatchers.withText("Fullscreen")))
+        Espresso.onView(ViewMatchers.withId(R.id.main_activity_settings_button))
+            .check(ViewAssertions.matches(ViewMatchers.withText("Settings")))
+        Espresso.onView(ViewMatchers.withId(R.id.main_activity_overlay_button))
+            .check(ViewAssertions.matches(ViewMatchers.withText("Show mini overlay")))
+
+        scenario.close()
+    }
+
+    @Test
     fun testKeepScreenOnOption() {
         val scenario = ActivityScenario.launch(MainActivity::class.java)
         Thread.sleep(3000)
 
         Assume.assumeTrue(Build.VERSION.SDK_INT >= 24)
 
-        // The screen on CI is small; scroll the config section into view
         scrollMainViewToBottom(scenario)
 
-        // Default of the option is "On", matching the historic behavior
-        Espresso.onView(ViewMatchers.withId(R.id.main_activity_config_keep_screen_on_textview))
-            .check(ViewAssertions.matches(ViewMatchers.withText("On")))
-            .check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
+        // One option now controls the main view and the mini overlay together;
+        // the default of the option is "On", matching the historic behavior
+        val expectedOn = context!!.getString(R.string.config_keep_screen_on) + ": " +
+            context!!.getString(R.string.option_on)
+        val expectedOff = context!!.getString(R.string.config_keep_screen_on) + ": " +
+            context!!.getString(R.string.option_off)
 
         Espresso.onView(ViewMatchers.withId(R.id.main_activity_keep_screen_on_button))
+            .check(ViewAssertions.matches(ViewMatchers.withText(expectedOn)))
             .check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
             .perform(ViewActions.click())
 
-        Espresso.onView(ViewMatchers.withId(R.id.main_activity_config_keep_screen_on_textview))
-            .check(ViewAssertions.matches(ViewMatchers.withText("Off")))
+        Espresso.onView(ViewMatchers.withId(R.id.main_activity_keep_screen_on_button))
+            .check(ViewAssertions.matches(ViewMatchers.withText(expectedOff)))
 
         scenario.onActivity { activity ->
+            assertFalse(isKeepScreenOnPreferenceEnabled(activity))
             assertFalse(activity.findViewById<View>(R.id.main).keepScreenOn)
         }
 
@@ -89,10 +131,11 @@ class MainActivityTest {
         Espresso.onView(ViewMatchers.withId(R.id.main_activity_keep_screen_on_button))
             .perform(ViewActions.click())
 
-        Espresso.onView(ViewMatchers.withId(R.id.main_activity_config_keep_screen_on_textview))
-            .check(ViewAssertions.matches(ViewMatchers.withText("On")))
+        Espresso.onView(ViewMatchers.withId(R.id.main_activity_keep_screen_on_button))
+            .check(ViewAssertions.matches(ViewMatchers.withText(expectedOn)))
 
         scenario.onActivity { activity ->
+            assertTrue(isKeepScreenOnPreferenceEnabled(activity))
             assertTrue(activity.findViewById<View>(R.id.main).keepScreenOn)
         }
 
@@ -132,49 +175,44 @@ class MainActivityTest {
     }
 
     @Test
-    fun testOverlayKeepScreenOnOption() {
+    fun testSettingsView() {
         val scenario = ActivityScenario.launch(MainActivity::class.java)
         Thread.sleep(3000)
 
         Assume.assumeTrue(Build.VERSION.SDK_INT >= 24)
 
         scrollMainViewToBottom(scenario)
-
-        // Default of the option is "On": the display stays on while the
-        // mini overlay is shown
-        Espresso.onView(ViewMatchers.withId(R.id.main_activity_config_overlay_keep_screen_on_textview))
-            .check(ViewAssertions.matches(ViewMatchers.withText("On")))
-            .check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
-
-        Espresso.onView(ViewMatchers.withId(R.id.main_activity_overlay_keep_screen_on_button))
-            .check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
+        Espresso.onView(ViewMatchers.withId(R.id.main_activity_settings_button))
             .perform(ViewActions.click())
+        Thread.sleep(1000)
 
-        Espresso.onView(ViewMatchers.withId(R.id.main_activity_config_overlay_keep_screen_on_textview))
-            .check(ViewAssertions.matches(ViewMatchers.withText("Off")))
+        // The settings view holds the provider and unit options
+        Espresso.onView(ViewMatchers.withId(R.id.settings_change_provider_button))
+            .check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
+        Espresso.onView(ViewMatchers.withId(R.id.settings_config_speed_unit_textview))
+            .check(ViewAssertions.matches(ViewMatchers.withText("km/h")))
+        Espresso.onView(ViewMatchers.withId(R.id.settings_config_altitude_unit_textview))
+            .check(ViewAssertions.matches(ViewMatchers.withText("m")))
 
-        scenario.onActivity { activity ->
-            assertFalse(isOverlayKeepScreenOnPreferenceEnabled(activity))
-        }
+        // License information and the app version live here too
+        scrollSettingsViewToBottom()
+        Espresso.onView(ViewMatchers.withId(R.id.settings_licensing_information_button))
+            .check(ViewAssertions.matches(ViewMatchers.withText("License information")))
+        Espresso.onView(ViewMatchers.withId(R.id.settings_version_info_footer))
+            .check(ViewAssertions.matches(ViewMatchers.withText(containsString(BuildConfig.VERSION_NAME))))
 
-        // Toggle back so that the default state is kept for other tests
-        Espresso.onView(ViewMatchers.withId(R.id.main_activity_overlay_keep_screen_on_button))
-            .perform(ViewActions.click())
-
-        Espresso.onView(ViewMatchers.withId(R.id.main_activity_config_overlay_keep_screen_on_textview))
-            .check(ViewAssertions.matches(ViewMatchers.withText("On")))
-
-        scenario.onActivity { activity ->
-            assertTrue(isOverlayKeepScreenOnPreferenceEnabled(activity))
-        }
+        Espresso.pressBack()
+        Thread.sleep(500)
+        Espresso.onView(ViewMatchers.withText("Speed"))
+            .check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
 
         scenario.close()
     }
 
-    private fun isOverlayKeepScreenOnPreferenceEnabled(activity: Context): Boolean {
+    private fun isKeepScreenOnPreferenceEnabled(activity: Context): Boolean {
         return PreferenceManager.getDefaultSharedPreferences(activity)
-            .getBoolean(MainActivity.PREFERENCE_KEY_OVERLAY_KEEP_SCREEN_ON,
-                MainActivity.PREFERENCE_VAL_OVERLAY_KEEP_SCREEN_ON_DEFAULT)
+            .getBoolean(MainActivity.PREFERENCE_KEY_KEEP_SCREEN_ON,
+                MainActivity.PREFERENCE_VAL_KEEP_SCREEN_ON_DEFAULT)
     }
 
     private fun isOverlayPreferenceEnabled(activity: Context): Boolean {
@@ -188,6 +226,14 @@ class MainActivityTest {
             // ScrollView#scrollTo clamps to the content size
             scrollView.scrollTo(0, Int.MAX_VALUE / 2)
         }
+        Thread.sleep(500)
+    }
+
+    private fun scrollSettingsViewToBottom() {
+        // The settings screen fits a phone screen; on the small CI screen the
+        // license button and version footer need one swipe.
+        Espresso.onView(ViewMatchers.withId(R.id.settings))
+            .perform(ViewActions.swipeUp())
         Thread.sleep(500)
     }
 

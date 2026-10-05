@@ -34,6 +34,26 @@ object DisplayFormat {
         }
     }
 
+    /** Unit label for the speed, shared by the main view and the settings view. */
+    fun speedUnitName(context: Context, speedUnit: Int): String {
+        return when (speedUnit) {
+            MainActivity.PREFERENCE_VAL_SPEED_UNIT_KNOT -> context.getText(R.string.unit_knot).toString()
+            MainActivity.PREFERENCE_VAL_SPEED_UNIT_M_S -> context.getText(R.string.unit_meter_per_second).toString()
+            MainActivity.PREFERENCE_VAL_SPEED_UNIT_MPH -> context.getText(R.string.unit_mile_per_hour).toString()
+            MainActivity.PREFERENCE_VAL_SPEED_UNIT_KM_H -> context.getText(R.string.unit_km_per_hour).toString()
+            else -> ""
+        }
+    }
+
+    /** Unit label for the altitude, shared by the main view and the settings view. */
+    fun altitudeUnitName(context: Context, altitudeUnit: Int): String {
+        return when (altitudeUnit) {
+            MainActivity.PREFERENCE_VAL_ALTITUDE_METERS -> context.getText(R.string.unit_meter).toString()
+            MainActivity.PREFERENCE_VAL_ALTITUDE_FEET -> context.getText(R.string.unit_feet).toString()
+            else -> ""
+        }
+    }
+
     /**
      * Resolves the altitude to display for a [Location], preferring mean sea
      * level (MSL) altitude when the platform is able to provide it (SDK34+).

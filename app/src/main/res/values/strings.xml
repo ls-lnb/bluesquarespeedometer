@@ -13,6 +13,8 @@
 
     <string name="menu_this_app_digital_speedometer_fullscreen">Digital Speedometer (fullscreen)</string>
     <string name="menu_this_app_licensing_information">License information</string>
+    <string name="main_button_fullscreen">Fullscreen</string>
+    <string name="settings_title">Settings</string>
     <string name="menu_this_app_overlay_show">Show mini overlay</string>
     <string name="menu_this_app_overlay_hide">Hide mini overlay</string>
 
@@ -48,8 +50,8 @@
     <string name="config_altitude_unit">Altitude unit</string>
     <string name="config_air_pressure_unit">Air pressure unit</string>
     <string name="config_keep_screen_on">Keep screen on</string>
-    <string name="config_overlay_keep_screen_on">Keep screen on (overlay)</string>
     <string name="option_on">On</string>
+    <string name="option_state_format">%1$s: %2$s</string>
     <string name="option_off">Off</string>
 
     <string name="coordinate_display_north">N</string>
