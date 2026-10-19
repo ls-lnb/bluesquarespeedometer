@@ -195,11 +195,11 @@
                 android:layout_weight="1"
                 android:layout_marginEnd="4dp"
                 android:text="@string/main_button_fullscreen"
-                android:minHeight="56dp"
+                android:minHeight="84dp"
                 android:maxLines="1"
                 app:autoSizeTextType="uniform"
                 app:autoSizeMinTextSize="10sp"
-                app:autoSizeMaxTextSize="16sp"
+                app:autoSizeMaxTextSize="24sp"
                 />
             <Button
                 android:id="@+id/main_activity_overlay_button"
@@ -208,18 +208,18 @@
                 android:layout_weight="1"
                 android:layout_marginStart="4dp"
                 android:text="@string/menu_this_app_overlay_show"
-                android:minHeight="56dp"
+                android:minHeight="84dp"
                 android:maxLines="1"
                 app:autoSizeTextType="uniform"
                 app:autoSizeMinTextSize="10sp"
-                app:autoSizeMaxTextSize="16sp"
+                app:autoSizeMaxTextSize="24sp"
                 />
         </LinearLayout>
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginTop="6dp"
+            android:layout_marginTop="8dp"
             android:baselineAligned="false"
             >
             <Button
@@ -229,11 +229,11 @@
                 android:layout_weight="1"
                 android:layout_marginEnd="4dp"
                 android:text="@string/config_keep_screen_on"
-                android:minHeight="56dp"
+                android:minHeight="84dp"
                 android:maxLines="1"
                 app:autoSizeTextType="uniform"
                 app:autoSizeMinTextSize="10sp"
-                app:autoSizeMaxTextSize="16sp"
+                app:autoSizeMaxTextSize="24sp"
                 />
             <Button
                 android:id="@+id/main_activity_settings_button"
@@ -242,11 +242,11 @@
                 android:layout_weight="1"
                 android:layout_marginStart="4dp"
                 android:text="@string/settings_title"
-                android:minHeight="56dp"
+                android:minHeight="84dp"
                 android:maxLines="1"
                 app:autoSizeTextType="uniform"
                 app:autoSizeMinTextSize="10sp"
-                app:autoSizeMaxTextSize="16sp"
+                app:autoSizeMaxTextSize="24sp"
                 />
         </LinearLayout>
     </LinearLayout>

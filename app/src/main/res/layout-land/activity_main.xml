@@ -220,7 +220,7 @@
                 android:maxLines="1"
                 app:autoSizeTextType="uniform"
                 app:autoSizeMinTextSize="9sp"
-                app:autoSizeMaxTextSize="16sp"
+                app:autoSizeMaxTextSize="20sp"
                 />
             <Button
                 android:id="@+id/main_activity_overlay_button"
@@ -232,7 +232,7 @@
                 android:maxLines="1"
                 app:autoSizeTextType="uniform"
                 app:autoSizeMinTextSize="9sp"
-                app:autoSizeMaxTextSize="16sp"
+                app:autoSizeMaxTextSize="20sp"
                 />
             <Button
                 android:id="@+id/main_activity_keep_screen_on_button"
@@ -244,7 +244,7 @@
                 android:maxLines="1"
                 app:autoSizeTextType="uniform"
                 app:autoSizeMinTextSize="9sp"
-                app:autoSizeMaxTextSize="16sp"
+                app:autoSizeMaxTextSize="20sp"
                 />
             <Button
                 android:id="@+id/main_activity_settings_button"
@@ -255,7 +255,7 @@
                 android:maxLines="1"
                 app:autoSizeTextType="uniform"
                 app:autoSizeMinTextSize="9sp"
-                app:autoSizeMaxTextSize="16sp"
+                app:autoSizeMaxTextSize="20sp"
                 />
         </LinearLayout>
     </LinearLayout>
