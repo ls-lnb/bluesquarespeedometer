@@ -5,14 +5,10 @@ import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.ActivityNotFoundException
 import android.content.Context
-import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.net.Uri
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -21,6 +17,9 @@ import android.provider.Settings
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.preference.PreferenceManager
+import android.text.Editable
+import android.text.TextWatcher
+import android.util.TypedValue
 import android.view.View
 import android.widget.Button
 import android.widget.TextView
@@ -30,13 +29,11 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.app.ActivityCompat
-import androidx.core.view.OnApplyWindowInsetsListener
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import net.nhiroki.bluesquarespeedometer.overlay.OverlaySpeedometerService
 import net.nhiroki.bluesquarespeedometer.viewers.DigitalSpeedometer1Activity
 import java.text.SimpleDateFormat
 import java.util.Date
+import kotlin.math.max
 
 
 class MainActivity : AppCompatActivity() {
@@ -55,11 +52,6 @@ class MainActivity : AppCompatActivity() {
         const val PREFERENCE_VAL_ALTITUDE_METERS:Int = 0
         const val PREFERENCE_VAL_ALTITUDE_FEET:Int = 1
 
-        const val PREFERENCE_KEY_AIR_PRESSURE_UNIT:String = "preference_air_pressure_unit"
-        const val PREFERENCE_VAL_AIR_PRESSURE_DEFAULT:Int = 0
-        const val PREFERENCE_VAL_AIR_PRESSURE_HPA:Int = 0
-        const val PREFERENCE_VAL_AIR_PRESSURE_INHG:Int = 1
-
         // Whether the regular (non fullscreen) view keeps the display on
         const val PREFERENCE_KEY_KEEP_SCREEN_ON:String = "preference_keep_screen_on"
         const val PREFERENCE_VAL_KEEP_SCREEN_ON_DEFAULT:Boolean = true
@@ -67,9 +59,19 @@ class MainActivity : AppCompatActivity() {
         // Whether the mini overlay (floating speedometer) should be shown
         const val PREFERENCE_KEY_OVERLAY_ENABLED:String = "preference_overlay_enabled"
 
-        // Whether the display stays on while the mini overlay is shown
-        const val PREFERENCE_KEY_OVERLAY_KEEP_SCREEN_ON:String = "preference_overlay_keep_screen_on"
-        const val PREFERENCE_VAL_OVERLAY_KEEP_SCREEN_ON_DEFAULT:Boolean = true
+        // The big digits fill this share of their (screen filling) section,
+        // so large sections do not end up with small numbers in them
+        private const val DIGIT_SECTION_FILL_RATIO:Float = 0.55f
+        private const val UNIT_SIZE_RATIO:Float = 0.4f
+        private const val MIN_DIGIT_SIZE_PX:Float = 14f
+        private const val MIN_UNIT_SIZE_PX:Float = 9f
+
+        // Readings the digit width is planned for, so the digits do not get
+        // resized whenever the number of digits changes
+        private const val ASSUMED_SPEED_DIGITS:Int = 3
+        private const val ASSUMED_ALTITUDE_DIGITS:Int = 4
+
+        private const val STATE_PENDING_OVERLAY_ENABLE:String = "pendingOverlayEnable"
     }
 
     class MyLocationListener : LocationListener {
@@ -92,28 +94,6 @@ class MainActivity : AppCompatActivity() {
     var _locationListener:LocationListener? = null
     var _displayedHeightM:Double = Double.NaN
 
-    class MySensorEventListener : SensorEventListener {
-        val mainActivity:MainActivity
-
-        constructor(mainActivity: MainActivity) {
-            this.mainActivity = mainActivity
-        }
-
-        override fun onAccuracyChanged(p0: Sensor?, p1: Int) {
-        }
-
-        override fun onSensorChanged(event: SensorEvent?) {
-            if (event?.sensor?.type == Sensor.TYPE_PRESSURE) {
-                if (event.values.size > 0) {
-                    mainActivity.updatePressure(event.values[0])
-                }
-            }
-        }
-    }
-
-    var _sensorManager:SensorManager? = null
-    var _sensorEventListener: SensorEventListener? = null
-
     private var _pendingOverlayEnable:Boolean = false
     private lateinit var _locationPermissionRequest: ActivityResultLauncher<Array<String>>
     private lateinit var _overlayPermissionRequest: ActivityResultLauncher<Intent>
@@ -123,19 +103,14 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         this.enableEdgeToEdge()
         setContentView(R.layout.activity_main)
-        ViewCompat.setOnApplyWindowInsetsListener(
-            findViewById<View?>(R.id.main),
-            OnApplyWindowInsetsListener { v: View?, insets: WindowInsetsCompat? ->
-                val systemBars = insets!!.getInsets(WindowInsetsCompat.Type.systemBars())
-                v!!.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
-                insets
-            })
+        // Keep the layout's own padding (which leaves room for curved
+        // display edges) and add the system bar / display cutout insets to it.
+        findViewById<View>(R.id.main).applyWindowInsetsPreservingPadding()
+
+        this._pendingOverlayEnable = savedInstanceState?.getBoolean(STATE_PENDING_OVERLAY_ENABLE) ?: false
 
         this._locationManager = this.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         this._locationListener = MyLocationListener(this)
-
-        this._sensorManager = this.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        this._sensorEventListener = MySensorEventListener(this)
 
         val locationPermissionRequest = registerForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions()
@@ -172,24 +147,11 @@ class MainActivity : AppCompatActivity() {
                 Manifest.permission.ACCESS_COARSE_LOCATION))
         }
 
-        this.findViewById<Button>(R.id.main_activity_licensing_information_button).setOnClickListener {
-            startActivity(Intent(this, LicensingInformationActivity::class.java))
-        }
         this.findViewById<Button>(R.id.main_activity_meter_car1_button).setOnClickListener {
             startActivity(Intent(this, DigitalSpeedometer1Activity::class.java))
         }
-
-        this.findViewById<Button>(R.id.main_activity_change_provider_button).setOnClickListener {
-            changeProviderButtonClicked()
-        }
-        this.findViewById<Button>(R.id.main_activity_speed_unit_button).setOnClickListener {
-            changeSpeedUnitButtonClicked()
-        }
-        this.findViewById<Button>(R.id.main_activity_altitude_unit_button).setOnClickListener {
-            changeAltitudeUnitButtonClicked()
-        }
-        this.findViewById<Button>(R.id.main_activity_air_pressure_unit_button).setOnClickListener {
-            changePressureUnitButtonClicked()
+        this.findViewById<Button>(R.id.main_activity_settings_button).setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
         }
         this.findViewById<Button>(R.id.main_activity_keep_screen_on_button).setOnClickListener {
             changeKeepScreenOnButtonClicked()
@@ -201,19 +163,14 @@ class MainActivity : AppCompatActivity() {
                 this.enableOverlay()
             }
         }
-        this.findViewById<Button>(R.id.main_activity_overlay_keep_screen_on_button).setOnClickListener {
-            this.changeOverlayKeepScreenOnButtonClicked()
-        }
         this.findViewById<Button>(R.id.main_activity_refresh_location_provider_button).setOnClickListener {
             updateLocationProvider()
         }
 
-        findViewById<TextView>(R.id.main_activity_version_info_footer).setText(getString(R.string.app_name) + " " + BuildConfig.VERSION_NAME)
-
         this.applyKeepScreenOn()
-        this.updateKeepScreenOnText()
-        this.updateOverlayKeepScreenOnText()
+        this.updateScreenOnButtonText()
         this.updateOverlayButton()
+        this.setupSectionDigitSizes()
     }
 
     override fun onResume() {
@@ -222,8 +179,7 @@ class MainActivity : AppCompatActivity() {
         updateOptionsShown()
 
         this.applyKeepScreenOn()
-        this.updateKeepScreenOnText()
-        this.updateOverlayKeepScreenOnText()
+        this.updateScreenOnButtonText()
         this.syncOverlayService()
         this.updateOverlayButton()
 
@@ -231,7 +187,6 @@ class MainActivity : AppCompatActivity() {
         val coarseLocationPermission:Boolean = ActivityCompat.checkSelfPermission( this, Manifest.permission.ACCESS_COARSE_LOCATION ) == PackageManager.PERMISSION_GRANTED
 
         findViewById<View>(R.id.main_activity_permission_location_not_granted).visibility = if (fineLocationPermission) View.GONE else View.VISIBLE
-        findViewById<View>(R.id.main_activity_links_to_direct_meters).visibility = View.GONE
 
         if (fineLocationPermission) {
             findViewById<TextView>(R.id.main_activity_permission_status_textview).setText(R.string.permission_location_fine);
@@ -245,73 +200,29 @@ class MainActivity : AppCompatActivity() {
             clearLocationDisplay()
             findViewById<TextView>(R.id.main_activity_permission_status_textview).setText(if (coarseLocationPermission) {R.string.permission_location_coarse} else {R.string.permission_location_no});
         }
+    }
 
-        val pressureSensorList = this._sensorManager!!.getSensorList(Sensor.TYPE_PRESSURE)
-        if (pressureSensorList.size > 0) {
-            findViewById<View>(R.id.main_activity_pressure_area).visibility = View.VISIBLE
-            findViewById<View>(R.id.main_activity_config_air_pressure_area).visibility = View.VISIBLE
-            for (sensor in pressureSensorList) {
-                this._sensorManager!!.registerListener(this._sensorEventListener, sensor, 500000)
-            }
-
-        } else {
-            findViewById<View>(R.id.main_activity_pressure_area).visibility = View.GONE
-            findViewById<View>(R.id.main_activity_config_air_pressure_area).visibility = View.GONE
-        }
+    override fun onSaveInstanceState(outState: Bundle) {
+        // Rotating while the overlay permission dialog is up must not lose the
+        // request to enable the overlay once the permission is granted
+        outState.putBoolean(STATE_PENDING_OVERLAY_ENABLE, this._pendingOverlayEnable)
+        super.onSaveInstanceState(outState)
     }
 
     override fun onStop() {
         this._locationManager!!.removeUpdates(this._locationListener!!)
-        this._sensorManager!!.unregisterListener(this._sensorEventListener)
         this._displayedHeightM = Double.NaN
         super.onStop()
     }
 
     private fun updateOptionsShown() {
         val speedUnit:Int = PreferenceManager.getDefaultSharedPreferences(this).getInt(PREFERENCE_KEY_SPEED_UNIT, PREFERENCE_VAL_SPEED_UNIT_DEFAULT)!!
-        val speedUnitName = {
-            when(speedUnit) {
-                PREFERENCE_VAL_SPEED_UNIT_KM_H -> getText(R.string.unit_km_per_hour)
-                PREFERENCE_VAL_SPEED_UNIT_KNOT -> getText(R.string.unit_knot)
-                PREFERENCE_VAL_SPEED_UNIT_M_S -> getText(R.string.unit_meter_per_second)
-                PREFERENCE_VAL_SPEED_UNIT_MPH -> getText(R.string.unit_mile_per_hour)
-                else -> ""
-            }
-        }()
-
         findViewById<TextView>(R.id.main_activity_speed_digits_textview).setText("-")
-        findViewById<TextView>(R.id.main_activity_config_speed_unit_textview).setText(speedUnitName)
-        findViewById<TextView>(R.id.main_activity_speed_unit_textview).setText(speedUnitName)
+        findViewById<TextView>(R.id.main_activity_speed_unit_textview).setText(DisplayFormat.speedUnitName(this, speedUnit))
 
         val altitudeUnit:Int = PreferenceManager.getDefaultSharedPreferences(this).getInt(PREFERENCE_KEY_ALTITUDE_UNIT, PREFERENCE_VAL_ALTITUDE_DEFAULT)!!
         findViewById<TextView>(R.id.main_activity_altitude_digits_textview).setText("-")
-        val altitudeUnitName = {
-            when(altitudeUnit) {
-                PREFERENCE_VAL_ALTITUDE_METERS -> getText(R.string.unit_meter)
-                PREFERENCE_VAL_ALTITUDE_FEET -> getText(R.string.unit_feet)
-                else -> ""
-            }
-        }()
-        findViewById<TextView>(R.id.main_activity_config_altitude_unit_textview).setText(altitudeUnitName)
-        findViewById<TextView>(R.id.main_activity_altitude_unit_textview).setText(altitudeUnitName)
-
-        val pressureUnit:Int = PreferenceManager.getDefaultSharedPreferences(this).getInt(PREFERENCE_KEY_AIR_PRESSURE_UNIT, PREFERENCE_VAL_AIR_PRESSURE_DEFAULT)!!
-        findViewById<TextView>(R.id.main_activity_pressure_digits_textview).setText("-")
-        val pressureUnitName = {
-            when(pressureUnit) {
-                PREFERENCE_VAL_AIR_PRESSURE_HPA -> getText(R.string.unit_hpa)
-                PREFERENCE_VAL_AIR_PRESSURE_INHG -> getText(R.string.unit_inhg)
-                else -> ""
-            }
-        }()
-        findViewById<TextView>(R.id.main_activity_config_air_pressure_unit_textview).setText(pressureUnitName)
-        findViewById<TextView>(R.id.main_activity_pressure_unit_textview).setText(pressureUnitName)
-
-        findViewById<TextView>(R.id.main_activity_pressure_altitude_digits_textview).setText("-")
-        findViewById<TextView>(R.id.main_activity_pressure_altitude_unit_textview).setText(altitudeUnitName)
-
-        findViewById<TextView>(R.id.main_activity_pressure_sea_level_digits_textview).setText("-")
-        findViewById<TextView>(R.id.main_activity_pressure_sea_level_unit_textview).setText(pressureUnitName)
+        findViewById<TextView>(R.id.main_activity_altitude_unit_textview).setText(DisplayFormat.altitudeUnitName(this, altitudeUnit))
     }
 
     @SuppressLint("MissingPermission")
@@ -320,8 +231,6 @@ class MainActivity : AppCompatActivity() {
         clearLocationDisplay()
 
         val currentPreferenceLocationProvider:String = PreferenceManager.getDefaultSharedPreferences(this).getString(PREFERENCE_KEY_LOCATION_PROVIDER, "")!!
-
-        findViewById<TextView>(R.id.main_activity_config_location_provider_textview).setText(if (currentPreferenceLocationProvider.isEmpty()) getText(R.string.general_caption_unset) else currentPreferenceLocationProvider)
 
         if (Build.VERSION.SDK_INT >= 28) {
             if (!this._locationManager!!.isLocationEnabled()) {
@@ -344,100 +253,10 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.main_activity_location_not_enabled).visibility = View.GONE
 
         this._locationManager!!.requestLocationUpdates(currentPreferenceLocationProvider, 0, 0.0f, this._locationListener!!)
-        findViewById<View>(R.id.main_activity_links_to_direct_meters).visibility = View.VISIBLE
     }
 
     private fun changeProviderButtonClicked() {
-        val locationProviders:List<String> = _locationManager!!.getProviders(false)
-
-        val currentPreferenceLocationProvider:String = PreferenceManager.getDefaultSharedPreferences(this).getString(PREFERENCE_KEY_LOCATION_PROVIDER, "")!!
-
-        var checkedItem:Int = -1
-
-        var candidates:Array<CharSequence> = Array(locationProviders.size, {
-            val ret:String = locationProviders.get(it)
-            if (currentPreferenceLocationProvider.equals(ret)) {
-                checkedItem = it
-            }
-            ret
-        })
-
-        AlertDialog.Builder(this).setTitle(R.string.dialog_select_location_provider).setSingleChoiceItems(candidates, checkedItem, DialogInterface.OnClickListener {
-                dialog, which ->
-            val prefEdit =
-                PreferenceManager.getDefaultSharedPreferences(this).edit()
-            prefEdit.putString(PREFERENCE_KEY_LOCATION_PROVIDER, locationProviders.get(which))
-            prefEdit.apply()
-            dialog.cancel()
-            this.updateLocationProvider()
-
-        }).create().show()
-    }
-
-    private fun changeSpeedUnitButtonClicked() {
-        val currentSpeedUnit:Int = PreferenceManager.getDefaultSharedPreferences(this).getInt(PREFERENCE_KEY_SPEED_UNIT, PREFERENCE_VAL_SPEED_UNIT_DEFAULT)!!
-
-        val candidates:Array<CharSequence> = Array(4, {
-            when(it) {
-                PREFERENCE_VAL_SPEED_UNIT_KM_H -> getText(R.string.unit_km_per_hour)
-                PREFERENCE_VAL_SPEED_UNIT_KNOT -> getText(R.string.unit_knot)
-                PREFERENCE_VAL_SPEED_UNIT_M_S -> getText(R.string.unit_meter_per_second)
-                PREFERENCE_VAL_SPEED_UNIT_MPH -> getText(R.string.unit_mile_per_hour)
-                else -> ""
-            }
-        })
-        AlertDialog.Builder(this).setTitle(R.string.dialog_select_speed_unit).setSingleChoiceItems(candidates, currentSpeedUnit, DialogInterface.OnClickListener {
-                dialog, which ->
-            val prefEdit =
-                PreferenceManager.getDefaultSharedPreferences(this).edit()
-            prefEdit.putInt(PREFERENCE_KEY_SPEED_UNIT, which)
-            prefEdit.apply()
-            dialog.cancel()
-            this.updateOptionsShown()
-        }).create().show()
-    }
-
-    private fun changeAltitudeUnitButtonClicked() {
-        val currentAltitudeUnit:Int = PreferenceManager.getDefaultSharedPreferences(this).getInt(PREFERENCE_KEY_ALTITUDE_UNIT, PREFERENCE_VAL_ALTITUDE_DEFAULT)!!
-
-        val candidates:Array<CharSequence> = Array(2, {
-            when(it) {
-                PREFERENCE_VAL_ALTITUDE_METERS -> getText(R.string.unit_meter)
-                PREFERENCE_VAL_ALTITUDE_FEET -> getText(R.string.unit_feet)
-                else -> ""
-            }
-        })
-        AlertDialog.Builder(this).setTitle(R.string.dialog_select_altitude_unit).setSingleChoiceItems(candidates, currentAltitudeUnit, DialogInterface.OnClickListener {
-            dialog, which ->
-                val prefEdit =
-                    PreferenceManager.getDefaultSharedPreferences(this).edit()
-                prefEdit.putInt(PREFERENCE_KEY_ALTITUDE_UNIT, which)
-                prefEdit.apply()
-                dialog.cancel()
-                this.updateOptionsShown()
-        }).create().show()
-    }
-
-    private fun changePressureUnitButtonClicked() {
-        val currentPressureUnit:Int = PreferenceManager.getDefaultSharedPreferences(this).getInt(PREFERENCE_KEY_AIR_PRESSURE_UNIT, PREFERENCE_VAL_AIR_PRESSURE_DEFAULT)!!
-
-        val candidates:Array<CharSequence> = Array(2, {
-            when(it) {
-                PREFERENCE_VAL_AIR_PRESSURE_HPA -> getText(R.string.unit_hpa)
-                PREFERENCE_VAL_AIR_PRESSURE_INHG -> getText(R.string.unit_inhg)
-                else -> ""
-            }
-        })
-        AlertDialog.Builder(this).setTitle(R.string.dialog_select_air_pressure_unit).setSingleChoiceItems(candidates, currentPressureUnit, DialogInterface.OnClickListener {
-                dialog, which ->
-            val prefEdit =
-                PreferenceManager.getDefaultSharedPreferences(this).edit()
-            prefEdit.putInt(PREFERENCE_KEY_AIR_PRESSURE_UNIT, which)
-            prefEdit.apply()
-            dialog.cancel()
-            this.updateOptionsShown()
-        }).create().show()
-
+        showLocationProviderDialog(this) { this.updateLocationProvider() }
     }
 
     private fun isKeepScreenOnEnabled(): Boolean {
@@ -448,8 +267,14 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.main).keepScreenOn = this.isKeepScreenOnEnabled()
     }
 
-    private fun updateKeepScreenOnText() {
-        findViewById<TextView>(R.id.main_activity_config_keep_screen_on_textview).setText(if (this.isKeepScreenOnEnabled()) R.string.option_on else R.string.option_off)
+    private fun updateScreenOnButtonText() {
+        // One option now controls both the main view and the mini overlay;
+        // the overlay service follows the same preference. The landscape
+        // side pane uses the shorter label to fit the narrow button.
+        findViewById<Button>(R.id.main_activity_keep_screen_on_button).setText(
+            getString(R.string.option_state_format,
+                getString(if (this.isLandscape()) R.string.main_button_screen_on_short else R.string.config_keep_screen_on),
+                getString(if (this.isKeepScreenOnEnabled()) R.string.option_on else R.string.option_off)))
     }
 
     private fun changeKeepScreenOnButtonClicked() {
@@ -457,24 +282,66 @@ class MainActivity : AppCompatActivity() {
             .putBoolean(PREFERENCE_KEY_KEEP_SCREEN_ON, !this.isKeepScreenOnEnabled())
             .apply()
         this.applyKeepScreenOn()
-        this.updateKeepScreenOnText()
-    }
-
-    private fun isOverlayKeepScreenOnEnabled(): Boolean {
-        return PreferenceManager.getDefaultSharedPreferences(this).getBoolean(PREFERENCE_KEY_OVERLAY_KEEP_SCREEN_ON, PREFERENCE_VAL_OVERLAY_KEEP_SCREEN_ON_DEFAULT)
-    }
-
-    private fun updateOverlayKeepScreenOnText() {
-        findViewById<TextView>(R.id.main_activity_config_overlay_keep_screen_on_textview).setText(if (this.isOverlayKeepScreenOnEnabled()) R.string.option_on else R.string.option_off)
-    }
-
-    private fun changeOverlayKeepScreenOnButtonClicked() {
-        PreferenceManager.getDefaultSharedPreferences(this).edit()
-            .putBoolean(PREFERENCE_KEY_OVERLAY_KEEP_SCREEN_ON, !this.isOverlayKeepScreenOnEnabled())
-            .apply()
-        this.updateOverlayKeepScreenOnText()
-        // The running overlay service notices the change through its
+        this.updateScreenOnButtonText()
+        // A running overlay service notices the change through its
         // OnSharedPreferenceChangeListener and updates its window flags
+    }
+
+    private fun isLandscape(): Boolean {
+        return resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    }
+
+    /**
+     * Sizes the big digits relative to their weighted, screen filling section
+     * and keeps them fitted when the layout changes, e.g. when the accuracy
+     * details grow or shrink, in portrait as well as in landscape.
+     */
+    private fun setupSectionDigitSizes() {
+        this.fitDigitsToSection(R.id.main_activity_speed_section, R.id.main_activity_speed_digits_textview, R.id.main_activity_speed_unit_textview, ASSUMED_SPEED_DIGITS)
+        this.fitDigitsToSection(R.id.main_activity_altitude_section, R.id.main_activity_altitude_digits_textview, R.id.main_activity_altitude_unit_textview, ASSUMED_ALTITUDE_DIGITS)
+    }
+
+    private fun fitDigitsToSection(sectionResId: Int, digitsResId: Int, unitResId: Int, assumedDigits: Int) {
+        val section = findViewById<View>(sectionResId)
+        val digits = findViewById<TextView>(digitsResId)
+        val unit = findViewById<TextView>(unitResId)
+
+        val fit = {
+            val sectionHeight = section.height
+            val sectionWidth = section.width
+            if (sectionHeight > 0 && sectionWidth > 0) {
+                val digitSize = DigitSizing.textSizePx(
+                    sectionHeightPx = sectionHeight,
+                    availableWidthPx = sectionWidth - digits.paddingEnd,
+                    digitCount = max(digits.text.length, assumedDigits),
+                    unitCharCount = unit.text.length,
+                    unitSizeRatio = UNIT_SIZE_RATIO,
+                    fillRatio = DIGIT_SECTION_FILL_RATIO,
+                    minSizePx = MIN_DIGIT_SIZE_PX)
+                if (DigitSizing.isSignificantChange(digits.textSize, digitSize)) {
+                    digits.setTextSize(TypedValue.COMPLEX_UNIT_PX, digitSize)
+                }
+                val unitSize = max(digits.textSize * UNIT_SIZE_RATIO, MIN_UNIT_SIZE_PX)
+                if (DigitSizing.isSignificantChange(unit.textSize, unitSize)) {
+                    unit.setTextSize(TypedValue.COMPLEX_UNIT_PX, unitSize)
+                }
+            }
+        }
+
+        section.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> fit() }
+        // The digit count drives the width cap, so refit when the value changes
+        digits.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {
+            }
+
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+            }
+
+            override fun afterTextChanged(s: Editable?) {
+                fit()
+            }
+        })
+        section.post { fit() }
     }
 
     private fun hasLocationPermission(): Boolean {
@@ -567,7 +434,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateOverlayButton() {
-        findViewById<Button>(R.id.main_activity_overlay_button).setText(if (this.isOverlayEnabled()) R.string.menu_this_app_overlay_hide else R.string.menu_this_app_overlay_show)
+        // The landscape side pane uses the short label with an On/Off state
+        findViewById<Button>(R.id.main_activity_overlay_button).setText(
+            if (this.isLandscape()) {
+                getString(R.string.option_state_format,
+                    getString(R.string.main_button_overlay_short),
+                    getString(if (this.isOverlayEnabled()) R.string.option_on else R.string.option_off))
+            } else if (this.isOverlayEnabled()) {
+                getString(R.string.menu_this_app_overlay_hide)
+            } else {
+                getString(R.string.menu_this_app_overlay_show)
+            })
     }
 
     /**
@@ -619,85 +496,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     /*
-     * inHg conversion
-     *
-     * 1 inHg ~= 3386.389 Pa
-     *   Couldn't find the precise information, but at least, the following refers inHg as 3386.389 Pa
-     *     https://en.wikipedia.org/wiki/Inch_of_mercury
-     *     https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication811e2008.pdf
-     *
-     *   Japanese 計量法 (Measrurement Act.): defines inHg as 3386.39 Pa
-     *     https://laws.e-gov.go.jp/law/404CO0000000357
-     *     > 水銀柱インチ パスカル又はニュートン毎平方メートルの三千三百八十六・三九倍
-     *
-     *   As long as displaying just 5 digits (like 29.921 inHg), further precision is not a problem. Using 3386.389.
-     */
-    fun updatePressure(pressure_hPa: Float) {
-        val pressureUnit:Int = PreferenceManager.getDefaultSharedPreferences(this).getInt(PREFERENCE_KEY_AIR_PRESSURE_UNIT, PREFERENCE_VAL_AIR_PRESSURE_DEFAULT)!!
-        when(pressureUnit) {
-            PREFERENCE_VAL_AIR_PRESSURE_HPA -> {
-                findViewById<TextView>(R.id.main_activity_pressure_digits_textview).setText(String.format("%.2f", pressure_hPa))
-                findViewById<TextView>(R.id.main_activity_pressure_unit_textview).setText(R.string.unit_hpa)
-            }
-            PREFERENCE_VAL_AIR_PRESSURE_INHG -> {
-                findViewById<TextView>(R.id.main_activity_pressure_digits_textview).setText(String.format("%.3f", pressure_hPa / 33.86389))
-                findViewById<TextView>(R.id.main_activity_pressure_unit_textview).setText(R.string.unit_inhg)
-            }
-        }
-
-        val pressureAltitude:Double = ISAPressureAltitude.pressureHpaToAltitudeM(pressure_hPa.toDouble())
-        val altitudeUnit:Int = PreferenceManager.getDefaultSharedPreferences(this).getInt(PREFERENCE_KEY_ALTITUDE_UNIT, PREFERENCE_VAL_ALTITUDE_DEFAULT)!!
-        when(altitudeUnit) {
-            PREFERENCE_VAL_ALTITUDE_METERS -> {
-                if(pressureAltitude.isNaN()) {
-                    findViewById<TextView>(R.id.main_activity_pressure_altitude_digits_textview).setText("-")
-                } else {
-                    findViewById<TextView>(R.id.main_activity_pressure_altitude_digits_textview).setText(String.format("%.1f", pressureAltitude))
-                }
-                findViewById<TextView>(R.id.main_activity_pressure_altitude_unit_textview).setText(R.string.unit_meter)
-            }
-            PREFERENCE_VAL_ALTITUDE_FEET -> {
-                if(pressureAltitude.isNaN()) {
-                    findViewById<TextView>(R.id.main_activity_pressure_altitude_digits_textview).setText("-")
-                } else {
-                    findViewById<TextView>(R.id.main_activity_pressure_altitude_digits_textview).setText((pressureAltitude / 0.3048).toInt().toString())
-                }
-                findViewById<TextView>(R.id.main_activity_pressure_altitude_unit_textview).setText(R.string.unit_feet)
-            }
-        }
-
-        var pressureSeaLevel:Double = Double.NaN
-        if (! this._displayedHeightM.isNaN()) {
-            pressureSeaLevel = ISAPressureAltitude.pressureHpaAtSeaLevel(
-                pressure_hPa.toDouble(),
-                this._displayedHeightM
-            )
-        }
-        if (! pressureSeaLevel.isNaN()) {
-            when(pressureUnit) {
-                PREFERENCE_VAL_AIR_PRESSURE_HPA -> {
-                    findViewById<TextView>(R.id.main_activity_pressure_sea_level_digits_textview).setText(String.format("%.1f", pressureSeaLevel))
-                    findViewById<TextView>(R.id.main_activity_pressure_sea_level_unit_textview).setText(R.string.unit_hpa)
-                }
-                PREFERENCE_VAL_AIR_PRESSURE_INHG -> {
-                    findViewById<TextView>(R.id.main_activity_pressure_sea_level_digits_textview).setText(String.format("%.2f", pressureSeaLevel / 33.86389))
-                    findViewById<TextView>(R.id.main_activity_pressure_sea_level_unit_textview).setText(R.string.unit_inhg)
-                }
-            }
-        } else {
-            findViewById<TextView>(R.id.main_activity_pressure_sea_level_digits_textview).setText("-")
-            when(pressureUnit) {
-                PREFERENCE_VAL_AIR_PRESSURE_HPA -> {
-                    findViewById<TextView>(R.id.main_activity_pressure_sea_level_unit_textview).setText(R.string.unit_hpa)
-                }
-                PREFERENCE_VAL_AIR_PRESSURE_INHG -> {
-                    findViewById<TextView>(R.id.main_activity_pressure_sea_level_unit_textview).setText(R.string.unit_inhg)
-                }
-            }
-        }
-    }
-
-    /*
      * Imperial units conversion
      *
      * 1 yard = 0.9144 m
@@ -741,40 +539,16 @@ class MainActivity : AppCompatActivity() {
      */
     fun updateLocation(location:Location) {
         val speedUnit:Int = PreferenceManager.getDefaultSharedPreferences(this).getInt(PREFERENCE_KEY_SPEED_UNIT, PREFERENCE_VAL_SPEED_UNIT_DEFAULT)!!
-        when(speedUnit) {
-            PREFERENCE_VAL_SPEED_UNIT_KM_H -> {
-                findViewById<TextView>(R.id.main_activity_speed_digits_textview).setText((location.speed * 3.6).toInt().toString())
-                findViewById<TextView>(R.id.main_activity_speed_unit_textview).setText(R.string.unit_km_per_hour)
-            }
-            PREFERENCE_VAL_SPEED_UNIT_KNOT -> {
-                findViewById<TextView>(R.id.main_activity_speed_digits_textview).setText((location.speed * 3.6 / 1.852).toInt().toString())
-                findViewById<TextView>(R.id.main_activity_speed_unit_textview).setText(R.string.unit_knot)
-            }
-            PREFERENCE_VAL_SPEED_UNIT_M_S -> {
-                findViewById<TextView>(R.id.main_activity_speed_digits_textview).setText((location.speed).toInt().toString())
-                findViewById<TextView>(R.id.main_activity_speed_unit_textview).setText(R.string.unit_meter_per_second)
-            }
-            PREFERENCE_VAL_SPEED_UNIT_MPH -> {
-                findViewById<TextView>(R.id.main_activity_speed_digits_textview).setText((location.speed * 3.6 / 1.609344).toInt().toString())
-                findViewById<TextView>(R.id.main_activity_speed_unit_textview).setText(R.string.unit_mile_per_hour)
-            }
-        }
+        findViewById<TextView>(R.id.main_activity_speed_digits_textview).setText(DisplayFormat.speedText(location.speed, speedUnit))
+        findViewById<TextView>(R.id.main_activity_speed_unit_textview).setText(DisplayFormat.speedUnitName(this, speedUnit))
 
         val altitudeReading:DisplayFormat.AltitudeReading = DisplayFormat.readAltitude(this, location)
 
         val altitudeUnit:Int = PreferenceManager.getDefaultSharedPreferences(this).getInt(PREFERENCE_KEY_ALTITUDE_UNIT, PREFERENCE_VAL_ALTITUDE_DEFAULT)!!
         val altitudeMeterToShow:Double = altitudeReading.meters
         findViewById<TextView>(R.id.main_activity_altitude_caption_textview).setText(if (altitudeReading.isMsl) R.string.metrics_msl_altitude else R.string.metrics_wgs84_altitude)
-        when(altitudeUnit) {
-            PREFERENCE_VAL_ALTITUDE_METERS -> {
-                findViewById<TextView>(R.id.main_activity_altitude_digits_textview).setText(DisplayFormat.altitudeText(altitudeMeterToShow, altitudeUnit))
-                findViewById<TextView>(R.id.main_activity_altitude_unit_textview).setText(R.string.unit_meter)
-            }
-            PREFERENCE_VAL_ALTITUDE_FEET -> {
-                findViewById<TextView>(R.id.main_activity_altitude_digits_textview).setText(DisplayFormat.altitudeText(altitudeMeterToShow, altitudeUnit))
-                findViewById<TextView>(R.id.main_activity_altitude_unit_textview).setText(R.string.unit_feet)
-            }
-        }
+        findViewById<TextView>(R.id.main_activity_altitude_digits_textview).setText(DisplayFormat.altitudeText(altitudeMeterToShow, altitudeUnit))
+        findViewById<TextView>(R.id.main_activity_altitude_unit_textview).setText(DisplayFormat.altitudeUnitName(this, altitudeUnit))
         this._displayedHeightM = altitudeMeterToShow
 
         var currentCordinateText:String = ""
@@ -815,12 +589,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.main_activity_geolocation_detail_textview).setText(geolocationDetailText)
 
         findViewById<View>(R.id.main_activity_location_not_enabled).visibility = View.GONE
-        findViewById<View>(R.id.main_activity_links_to_direct_meters).visibility = View.VISIBLE
     }
 
     fun clearLocationDisplay() {
-        findViewById<TextView>(R.id.main_activity_config_location_provider_textview).setText(R.string.general_caption_unset)
-
         findViewById<TextView>(R.id.main_activity_speed_digits_textview).setText("-")
 
         findViewById<TextView>(R.id.main_activity_altitude_digits_textview).setText("-")

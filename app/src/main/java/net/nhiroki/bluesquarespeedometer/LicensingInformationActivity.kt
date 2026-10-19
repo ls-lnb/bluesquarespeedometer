@@ -5,9 +5,6 @@ import android.os.Bundle
 import android.view.View
 import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
-import androidx.core.view.OnApplyWindowInsetsListener
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 
 class LicensingInformationActivity : AppCompatActivity() {
     // Could not include into values/strings.xml, possibly due to length limitation
@@ -219,13 +216,7 @@ class LicensingInformationActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContentView(R.layout.activity_licensing_information)
-        ViewCompat.setOnApplyWindowInsetsListener(
-            findViewById<View?>(R.id.main),
-            OnApplyWindowInsetsListener { v: View?, insets: WindowInsetsCompat? ->
-                val systemBars = insets!!.getInsets(WindowInsetsCompat.Type.systemBars())
-                v!!.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
-                insets
-            })
+        findViewById<View>(R.id.main).applyWindowInsetsPreservingPadding()
 
         findViewById<TextView>(R.id.licensing_information_apache_license_v2_0_full_text).setText(APACHE_LICENSE_VERSION_2_FULL_TEXT)
     }

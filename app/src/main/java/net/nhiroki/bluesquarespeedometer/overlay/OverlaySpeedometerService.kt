@@ -114,10 +114,12 @@ class OverlaySpeedometerService : android.app.Service() {
         this._touchSlop = ViewConfiguration.get(this).scaledTouchSlop
 
         // React to preference changes made while the overlay is showing,
-        // e.g. toggling "keep screen on (overlay)" in the main view.
+        // e.g. toggling "Keep screen on" in the main view.
         this._prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == MainActivity.PREFERENCE_KEY_OVERLAY_KEEP_SCREEN_ON) {
-                this.applyKeepScreenOnFlag()
+            when (key) {
+                MainActivity.PREFERENCE_KEY_KEEP_SCREEN_ON -> this.applyKeepScreenOnFlag()
+                // Another provider means new location updates to listen to
+                MainActivity.PREFERENCE_KEY_LOCATION_PROVIDER -> this.startLocationUpdates()
             }
         }
         PreferenceManager.getDefaultSharedPreferences(this)
@@ -136,22 +138,33 @@ class OverlaySpeedometerService : android.app.Service() {
             }
         }
 
-        createNotificationChannel()
-        val notification = buildNotification()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
-        } else {
-            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, 0)
+        // The service can be restarted by the system, so the permissions may
+        // have been revoked since it was enabled. Give up before starting a
+        // location foreground service, which would only crash on newer APIs.
+        val fineGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val coarseGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (!Settings.canDrawOverlays(this) || (!fineGranted && !coarseGranted)) {
+            stopSelf()
+            return START_NOT_STICKY
         }
 
-        if (Settings.canDrawOverlays(this)) {
-            showOverlay()
-            startLocationUpdates()
-            _running = true
-        } else {
-            // Permission was revoked meanwhile; do not keep running.
+        createNotificationChannel()
+        val notification = buildNotification()
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+            } else {
+                ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, 0)
+            }
+        } catch (e: SecurityException) {
+            // Location permission was revoked after the check above
             stopSelf()
+            return START_NOT_STICKY
         }
+
+        showOverlay()
+        startLocationUpdates()
+        _running = true
 
         // Restart with the overlay shown if the process is killed by the system
         return START_STICKY
@@ -244,7 +257,7 @@ class OverlaySpeedometerService : android.app.Service() {
             PixelFormat.TRANSLUCENT
         )
         params.gravity = Gravity.TOP or Gravity.START
-        if (this.isOverlayKeepScreenOnEnabled()) {
+        if (this.isKeepScreenOnEnabled()) {
             params.flags = params.flags or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
         }
 
@@ -264,7 +277,14 @@ class OverlaySpeedometerService : android.app.Service() {
         // reach the root view which handles dragging and plain clicks).
         overlayView.setOnTouchListener { view, event -> handleDrag(view, event) }
 
-        this._windowManager!!.addView(overlayView, params)
+        try {
+            this._windowManager!!.addView(overlayView, params)
+        } catch (e: WindowManager.BadTokenException) {
+            // The "display over other apps" permission was revoked in the
+            // meantime; do not stay alive as a foreground service without UI
+            stopSelf()
+            return
+        }
         this._overlayView = overlayView
         this._windowParams = params
     }
@@ -456,10 +476,11 @@ class OverlaySpeedometerService : android.app.Service() {
             .apply()
     }
 
-    private fun isOverlayKeepScreenOnEnabled(): Boolean {
+    // One preference drives both the main view and the overlay
+    private fun isKeepScreenOnEnabled(): Boolean {
         return PreferenceManager.getDefaultSharedPreferences(this).getBoolean(
-            MainActivity.PREFERENCE_KEY_OVERLAY_KEEP_SCREEN_ON,
-            MainActivity.PREFERENCE_VAL_OVERLAY_KEEP_SCREEN_ON_DEFAULT
+            MainActivity.PREFERENCE_KEY_KEEP_SCREEN_ON,
+            MainActivity.PREFERENCE_VAL_KEEP_SCREEN_ON_DEFAULT
         )
     }
 
@@ -473,7 +494,7 @@ class OverlaySpeedometerService : android.app.Service() {
         val overlayView = this._overlayView ?: return
         val params = this._windowParams ?: return
 
-        val keepOn = this.isOverlayKeepScreenOnEnabled()
+        val keepOn = this.isKeepScreenOnEnabled()
         val has = (params.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) != 0
         if (keepOn == has) {
             return
