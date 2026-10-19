@@ -1,6 +1,7 @@
 package net.nhiroki.bluesquarespeedometer
 
 import android.app.LocaleManager
+import android.Manifest
 import android.content.Context
 import android.content.pm.ActivityInfo
 import android.os.Build
@@ -37,7 +38,6 @@ class MainActivityTest {
     @Before
     fun setUp() {
         this.context = InstrumentationRegistry.getInstrumentation().targetContext
-
         TimeZone.setDefault(TimeZone.getTimeZone("Asia/Tokyo"))
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -47,6 +47,26 @@ class MainActivityTest {
             AppCompatDelegate.setApplicationLocales(LocaleListCompat.create(Locale("en", "US")))
         }
         Locale.setDefault(Locale("en", "US"))
+
+        // With no provider stored yet the app opens the provider dialog on
+        // start, which then covers the views under test. Store one so the
+        // tests see the normal view; the value is never resolved against the
+        // device's providers here.
+        PreferenceManager.getDefaultSharedPreferences(context).edit()
+            .putString(MainActivity.PREFERENCE_KEY_LOCATION_PROVIDER, "gps")
+            .apply()
+
+        // On a freshly installed app no runtime permission is granted yet, and
+        // the "no location permission" alert then takes height away from the
+        // view under test
+        try {
+            InstrumentationRegistry.getInstrumentation().uiAutomation
+                .grantRuntimePermission(context!!.packageName, Manifest.permission.ACCESS_FINE_LOCATION)
+            InstrumentationRegistry.getInstrumentation().uiAutomation
+                .grantRuntimePermission(context!!.packageName, Manifest.permission.ACCESS_COARSE_LOCATION)
+        } catch (e: SecurityException) {
+            // Already granted or not grantable; the tests still work either way
+        }
     }
 
     @Test
@@ -107,8 +127,6 @@ class MainActivityTest {
 
         Assume.assumeTrue(Build.VERSION.SDK_INT >= 24)
 
-        scrollMainViewToBottom(scenario)
-
         // One option now controls the main view and the mini overlay together;
         // the default of the option is "On", matching the historic behavior
         val expectedOn = context!!.getString(R.string.config_keep_screen_on) + ": " +
@@ -116,7 +134,11 @@ class MainActivityTest {
         val expectedOff = context!!.getString(R.string.config_keep_screen_on) + ": " +
             context!!.getString(R.string.option_off)
 
-        Espresso.onView(ViewMatchers.withId(R.id.main_activity_keep_screen_on_button))
+        val keepScreenOnButton = Espresso.onView(ViewMatchers.withId(R.id.main_activity_keep_screen_on_button))
+        // The view height follows the accuracy details, so scroll right before
+        // touching the button
+        keepScreenOnButton
+            .perform(ViewActions.scrollTo())
             .check(ViewAssertions.matches(ViewMatchers.withText(expectedOn)))
             .check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
             .perform(ViewActions.click())
@@ -130,10 +152,8 @@ class MainActivityTest {
         }
 
         // Toggle back so that the default state is kept for other tests
-        Espresso.onView(ViewMatchers.withId(R.id.main_activity_keep_screen_on_button))
-            .perform(ViewActions.click())
-
-        Espresso.onView(ViewMatchers.withId(R.id.main_activity_keep_screen_on_button))
+        keepScreenOnButton
+            .perform(ViewActions.scrollTo(), ViewActions.click())
             .check(ViewAssertions.matches(ViewMatchers.withText(expectedOn)))
 
         scenario.onActivity { activity ->
@@ -153,17 +173,16 @@ class MainActivityTest {
         // This test is about asking for the "Display over other apps" permission
         Assume.assumeFalse(Settings.canDrawOverlays(this.context))
 
-        scrollMainViewToBottom(scenario)
-
         // The overlay button is always shown, in its "show" state initially
         Espresso.onView(ViewMatchers.withId(R.id.main_activity_overlay_button))
+            .perform(ViewActions.scrollTo())
             .check(ViewAssertions.matches(ViewMatchers.withText("Show mini overlay")))
             .check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
 
         // Tapping it explains and requests the overlay permission, but does not
         // enable the overlay itself while the permission is missing
         Espresso.onView(ViewMatchers.withId(R.id.main_activity_overlay_button))
-            .perform(ViewActions.click())
+            .perform(ViewActions.scrollTo(), ViewActions.click())
 
         Espresso.onView(ViewMatchers.withText(R.string.overlay_permission_description))
             .check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
@@ -183,9 +202,8 @@ class MainActivityTest {
 
         Assume.assumeTrue(Build.VERSION.SDK_INT >= 24)
 
-        scrollMainViewToBottom(scenario)
         Espresso.onView(ViewMatchers.withId(R.id.main_activity_settings_button))
-            .perform(ViewActions.click())
+            .perform(ViewActions.scrollTo(), ViewActions.click())
         Thread.sleep(1000)
 
         // The settings view holds the provider and unit options
@@ -302,12 +320,16 @@ class MainActivityTest {
     }
 
     private fun scrollMainViewToBottom(scenario: ActivityScenario<MainActivity>) {
-        scenario.onActivity { activity ->
-            val scrollView = activity.findViewById<View>(R.id.main) as? ScrollView
-            // ScrollView#scrollTo clamps to the content size
-            scrollView?.scrollTo(0, Int.MAX_VALUE / 2)
+        // The digits resize themselves when the accuracy details change height,
+        // which can move the buttons after the first scroll, so scroll twice.
+        repeat(2) {
+            scenario.onActivity { activity ->
+                val scrollView = activity.findViewById<View>(R.id.main) as? ScrollView
+                // ScrollView#scrollTo clamps to the content size
+                scrollView?.scrollTo(0, Int.MAX_VALUE / 2)
+            }
+            Thread.sleep(400)
         }
-        Thread.sleep(500)
     }
 
     private fun scrollSettingsViewToBottom() {
