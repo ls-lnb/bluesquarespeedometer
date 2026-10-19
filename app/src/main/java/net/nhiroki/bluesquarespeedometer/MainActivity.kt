@@ -61,7 +61,7 @@ class MainActivity : AppCompatActivity() {
 
         // The big digits fill this share of their (screen filling) section,
         // so large sections do not end up with small numbers in them
-        private const val DIGIT_SECTION_FILL_RATIO:Float = 0.5f
+        private const val DIGIT_SECTION_FILL_RATIO:Float = 0.55f
         private const val UNIT_SIZE_RATIO:Float = 0.4f
         private const val MIN_DIGIT_SIZE_PX:Float = 14f
         private const val MIN_UNIT_SIZE_PX:Float = 9f
