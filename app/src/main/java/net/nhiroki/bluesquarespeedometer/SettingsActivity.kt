@@ -1,10 +1,8 @@
 package net.nhiroki.bluesquarespeedometer
 
 import android.app.AlertDialog
-import android.content.Context
 import android.content.DialogInterface
 import android.content.Intent
-import android.location.LocationManager
 import android.os.Bundle
 import android.preference.PreferenceManager
 import android.view.View
@@ -12,10 +10,6 @@ import android.widget.Button
 import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.OnApplyWindowInsetsListener
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
-import kotlin.math.max
 
 /**
  * Settings screen: location provider, units, license information and the app
@@ -26,25 +20,7 @@ class SettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         this.enableEdgeToEdge()
         setContentView(R.layout.activity_settings)
-        // Keep the layout's own padding (curved display edges) and add
-        // the system bar / display cutout insets to it
-        val insetTarget = findViewById<View>(R.id.settings)
-        val baseLeft = insetTarget.paddingLeft
-        val baseTop = insetTarget.paddingTop
-        val baseRight = insetTarget.paddingRight
-        val baseBottom = insetTarget.paddingBottom
-        ViewCompat.setOnApplyWindowInsetsListener(
-            insetTarget,
-            OnApplyWindowInsetsListener { v: View?, insets: WindowInsetsCompat? ->
-                val systemBars = insets!!.getInsets(WindowInsetsCompat.Type.systemBars())
-                val cutout = insets.getInsets(WindowInsetsCompat.Type.displayCutout())
-                v!!.setPadding(
-                    baseLeft + max(systemBars.left, cutout.left),
-                    baseTop + max(systemBars.top, cutout.top),
-                    baseRight + max(systemBars.right, cutout.right),
-                    baseBottom + max(systemBars.bottom, cutout.bottom))
-                insets
-            })
+        findViewById<View>(R.id.settings).applyWindowInsetsPreservingPadding()
 
         this.findViewById<Button>(R.id.settings_change_provider_button).setOnClickListener {
             this.changeProviderButtonClicked()
@@ -81,33 +57,9 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun changeProviderButtonClicked() {
-        val locationManager = this.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        val locationProviders:List<String> = locationManager.getProviders(false)
-
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val currentPreferenceLocationProvider:String = prefs.getString(MainActivity.PREFERENCE_KEY_LOCATION_PROVIDER, "")!!
-
-        var checkedItem:Int = -1
-
-        var candidates:Array<CharSequence> = Array(locationProviders.size, {
-            val ret:String = locationProviders.get(it)
-            if (currentPreferenceLocationProvider.equals(ret)) {
-                checkedItem = it
-            }
-            ret
-        })
-
-        AlertDialog.Builder(this).setTitle(R.string.dialog_select_location_provider).setSingleChoiceItems(candidates, checkedItem, DialogInterface.OnClickListener {
-                dialog, which ->
-            prefs.edit()
-                .putString(MainActivity.PREFERENCE_KEY_LOCATION_PROVIDER, locationProviders.get(which))
-                .apply()
-            dialog.cancel()
-            this.updateValuesShown()
-            // MainActivity re-registers its location updates with the new
-            // provider when it resumes, right after this screen closes.
-
-        }).create().show()
+        // MainActivity re-registers its location updates with the new provider
+        // when it resumes, right after this screen closes.
+        showLocationProviderDialog(this) { this.updateValuesShown() }
     }
 
     private fun changeSpeedUnitButtonClicked() {

@@ -11,11 +11,8 @@ import android.view.View
 import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.OnApplyWindowInsetsListener
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
-import kotlin.math.max
 import net.nhiroki.bluesquarespeedometer.DisplayFormat
+import net.nhiroki.bluesquarespeedometer.applyWindowInsetsPreservingPadding
 import net.nhiroki.bluesquarespeedometer.MainActivity
 import net.nhiroki.bluesquarespeedometer.R
 
@@ -43,25 +40,7 @@ class DigitalSpeedometer1Activity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContentView(R.layout.activity_viewers_digital_meter1)
-        // Keep the layout's own padding (curved display edges) and add
-        // the system bar / display cutout insets to it
-        val insetTarget = findViewById<View>(R.id.main)
-        val baseLeft = insetTarget.paddingLeft
-        val baseTop = insetTarget.paddingTop
-        val baseRight = insetTarget.paddingRight
-        val baseBottom = insetTarget.paddingBottom
-        ViewCompat.setOnApplyWindowInsetsListener(
-            insetTarget,
-            OnApplyWindowInsetsListener { v: View?, insets: WindowInsetsCompat? ->
-                val systemBars = insets!!.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.systemBars())
-                val cutout = insets.getInsets(WindowInsetsCompat.Type.displayCutout())
-                v!!.setPadding(
-                    baseLeft + max(systemBars.left, cutout.left),
-                    baseTop + max(systemBars.top, cutout.top),
-                    baseRight + max(systemBars.right, cutout.right),
-                    baseBottom + max(systemBars.bottom, cutout.bottom))
-                insets
-            })
+        findViewById<View>(R.id.main).applyWindowInsetsPreservingPadding(ignoreSystemBarVisibility = true)
 
         this._locationManager = this.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         this._locationListener = MyLocationListener(this)
@@ -109,52 +88,19 @@ class DigitalSpeedometer1Activity : AppCompatActivity() {
     // Confidence for each unit is on comment on MainActivity
     private fun updateUnitText() {
         val speedUnit:Int = PreferenceManager.getDefaultSharedPreferences(this).getInt(MainActivity.PREFERENCE_KEY_SPEED_UNIT, MainActivity.PREFERENCE_VAL_SPEED_UNIT_DEFAULT )!!
-
-        when(speedUnit) {
-            MainActivity.PREFERENCE_VAL_SPEED_UNIT_KM_H -> {
-                findViewById<TextView>(R.id.digital_meter1_unit_textview).setText(getText(R.string.unit_km_per_hour))
-            }
-            MainActivity.PREFERENCE_VAL_SPEED_UNIT_KNOT -> {
-                findViewById<TextView>(R.id.digital_meter1_unit_textview).setText(getText(R.string.unit_knot))
-            }
-            MainActivity.PREFERENCE_VAL_SPEED_UNIT_M_S -> {
-                findViewById<TextView>(R.id.digital_meter1_unit_textview).setText(getText(R.string.unit_meter_per_second))
-            }
-            MainActivity.PREFERENCE_VAL_SPEED_UNIT_MPH -> {
-                findViewById<TextView>(R.id.digital_meter1_unit_textview).setText(getText(R.string.unit_mile_per_hour))
-            }
-        }
+        findViewById<TextView>(R.id.digital_meter1_unit_textview).setText(DisplayFormat.speedUnitName(this, speedUnit))
     }
 
     // Confidence for each unit is on comment on MainActivity
     private fun updateAltitudeUnitText() {
         val altitudeUnit:Int = PreferenceManager.getDefaultSharedPreferences(this).getInt(MainActivity.PREFERENCE_KEY_ALTITUDE_UNIT, MainActivity.PREFERENCE_VAL_ALTITUDE_DEFAULT)!!
-        findViewById<TextView>(R.id.digital_meter1_altitude_unit_textview).setText(
-            when(altitudeUnit) {
-                MainActivity.PREFERENCE_VAL_ALTITUDE_FEET -> R.string.unit_feet
-                else -> R.string.unit_meter
-            }
-        )
+        findViewById<TextView>(R.id.digital_meter1_altitude_unit_textview).setText(DisplayFormat.altitudeUnitName(this, altitudeUnit))
     }
 
     // Confidence for each unit is on comment on MainActivity
     private fun updateLocation(location: Location) {
         val speedUnit:Int = PreferenceManager.getDefaultSharedPreferences(this).getInt(MainActivity.PREFERENCE_KEY_SPEED_UNIT, MainActivity.PREFERENCE_VAL_SPEED_UNIT_DEFAULT )!!
-
-        when(speedUnit) {
-            MainActivity.PREFERENCE_VAL_SPEED_UNIT_KM_H -> {
-                findViewById<TextView>(R.id.digital_meter1_textview).setText((location.speed * 3.6).toInt().toString())
-            }
-            MainActivity.PREFERENCE_VAL_SPEED_UNIT_KNOT -> {
-                findViewById<TextView>(R.id.digital_meter1_textview).setText((location.speed * 3.6 / 1.852).toInt().toString())
-            }
-            MainActivity.PREFERENCE_VAL_SPEED_UNIT_M_S -> {
-                findViewById<TextView>(R.id.digital_meter1_textview).setText((location.speed).toInt().toString())
-            }
-            MainActivity.PREFERENCE_VAL_SPEED_UNIT_MPH -> {
-                findViewById<TextView>(R.id.digital_meter1_textview).setText((location.speed * 3.6 / 1.609344).toInt().toString())
-            }
-        }
+        findViewById<TextView>(R.id.digital_meter1_textview).setText(DisplayFormat.speedText(location.speed, speedUnit))
         updateUnitText()
 
         // Altitude shown at the bottom of the fullscreen view

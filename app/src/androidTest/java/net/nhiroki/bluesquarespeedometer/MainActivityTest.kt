@@ -1,13 +1,16 @@
 package net.nhiroki.bluesquarespeedometer
 
 import android.app.LocaleManager
+import android.Manifest
 import android.content.Context
+import android.content.pm.ActivityInfo
 import android.os.Build
 import android.os.LocaleList
 import android.preference.PreferenceManager
 import android.provider.Settings
 import android.view.View
 import android.widget.ScrollView
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import androidx.test.core.app.ActivityScenario
@@ -35,7 +38,6 @@ class MainActivityTest {
     @Before
     fun setUp() {
         this.context = InstrumentationRegistry.getInstrumentation().targetContext
-
         TimeZone.setDefault(TimeZone.getTimeZone("Asia/Tokyo"))
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -45,6 +47,26 @@ class MainActivityTest {
             AppCompatDelegate.setApplicationLocales(LocaleListCompat.create(Locale("en", "US")))
         }
         Locale.setDefault(Locale("en", "US"))
+
+        // With no provider stored yet the app opens the provider dialog on
+        // start, which then covers the views under test. Store one so the
+        // tests see the normal view; the value is never resolved against the
+        // device's providers here.
+        PreferenceManager.getDefaultSharedPreferences(context).edit()
+            .putString(MainActivity.PREFERENCE_KEY_LOCATION_PROVIDER, "gps")
+            .apply()
+
+        // On a freshly installed app no runtime permission is granted yet, and
+        // the "no location permission" alert then takes height away from the
+        // view under test
+        try {
+            InstrumentationRegistry.getInstrumentation().uiAutomation
+                .grantRuntimePermission(context!!.packageName, Manifest.permission.ACCESS_FINE_LOCATION)
+            InstrumentationRegistry.getInstrumentation().uiAutomation
+                .grantRuntimePermission(context!!.packageName, Manifest.permission.ACCESS_COARSE_LOCATION)
+        } catch (e: SecurityException) {
+            // Already granted or not grantable; the tests still work either way
+        }
     }
 
     @Test
@@ -105,8 +127,6 @@ class MainActivityTest {
 
         Assume.assumeTrue(Build.VERSION.SDK_INT >= 24)
 
-        scrollMainViewToBottom(scenario)
-
         // One option now controls the main view and the mini overlay together;
         // the default of the option is "On", matching the historic behavior
         val expectedOn = context!!.getString(R.string.config_keep_screen_on) + ": " +
@@ -114,7 +134,11 @@ class MainActivityTest {
         val expectedOff = context!!.getString(R.string.config_keep_screen_on) + ": " +
             context!!.getString(R.string.option_off)
 
-        Espresso.onView(ViewMatchers.withId(R.id.main_activity_keep_screen_on_button))
+        val keepScreenOnButton = Espresso.onView(ViewMatchers.withId(R.id.main_activity_keep_screen_on_button))
+        // The view height follows the accuracy details, so scroll right before
+        // touching the button
+        keepScreenOnButton
+            .perform(ViewActions.scrollTo())
             .check(ViewAssertions.matches(ViewMatchers.withText(expectedOn)))
             .check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
             .perform(ViewActions.click())
@@ -128,10 +152,8 @@ class MainActivityTest {
         }
 
         // Toggle back so that the default state is kept for other tests
-        Espresso.onView(ViewMatchers.withId(R.id.main_activity_keep_screen_on_button))
-            .perform(ViewActions.click())
-
-        Espresso.onView(ViewMatchers.withId(R.id.main_activity_keep_screen_on_button))
+        keepScreenOnButton
+            .perform(ViewActions.scrollTo(), ViewActions.click())
             .check(ViewAssertions.matches(ViewMatchers.withText(expectedOn)))
 
         scenario.onActivity { activity ->
@@ -151,17 +173,16 @@ class MainActivityTest {
         // This test is about asking for the "Display over other apps" permission
         Assume.assumeFalse(Settings.canDrawOverlays(this.context))
 
-        scrollMainViewToBottom(scenario)
-
         // The overlay button is always shown, in its "show" state initially
         Espresso.onView(ViewMatchers.withId(R.id.main_activity_overlay_button))
+            .perform(ViewActions.scrollTo())
             .check(ViewAssertions.matches(ViewMatchers.withText("Show mini overlay")))
             .check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
 
         // Tapping it explains and requests the overlay permission, but does not
         // enable the overlay itself while the permission is missing
         Espresso.onView(ViewMatchers.withId(R.id.main_activity_overlay_button))
-            .perform(ViewActions.click())
+            .perform(ViewActions.scrollTo(), ViewActions.click())
 
         Espresso.onView(ViewMatchers.withText(R.string.overlay_permission_description))
             .check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
@@ -181,9 +202,8 @@ class MainActivityTest {
 
         Assume.assumeTrue(Build.VERSION.SDK_INT >= 24)
 
-        scrollMainViewToBottom(scenario)
         Espresso.onView(ViewMatchers.withId(R.id.main_activity_settings_button))
-            .perform(ViewActions.click())
+            .perform(ViewActions.scrollTo(), ViewActions.click())
         Thread.sleep(1000)
 
         // The settings view holds the provider and unit options
@@ -209,6 +229,85 @@ class MainActivityTest {
         scenario.close()
     }
 
+    @Test
+    fun testDigitsStayInsideTheirSection() {
+        val scenario = ActivityScenario.launch(MainActivity::class.java)
+        Thread.sleep(3000)
+
+        Assume.assumeTrue(Build.VERSION.SDK_INT >= 24)
+
+        // A long reading is the case that used to overflow the section width
+        scenario.onActivity { activity ->
+            activity.findViewById<TextView>(R.id.main_activity_speed_digits_textview).setText("888")
+            activity.findViewById<TextView>(R.id.main_activity_altitude_digits_textview).setText("8888")
+        }
+        Thread.sleep(500)
+
+        scenario.onActivity { activity ->
+            for (ids in listOf(
+                    Pair(R.id.main_activity_speed_section, R.id.main_activity_speed_digits_textview),
+                    Pair(R.id.main_activity_altitude_section, R.id.main_activity_altitude_digits_textview))) {
+                val section = activity.findViewById<View>(ids.first)
+                val digits = activity.findViewById<TextView>(ids.second)
+                val unit = activity.findViewById<TextView>(
+                    if (ids.first == R.id.main_activity_speed_section) R.id.main_activity_speed_unit_textview
+                    else R.id.main_activity_altitude_unit_textview)
+
+                assertTrue("digits must keep a readable size", digits.textSize > 0f)
+                assertTrue(
+                    "digits (${digits.width}px) and unit (${unit.width}px) must fit the section (${section.width}px)",
+                    digits.width + unit.width <= section.width)
+            }
+        }
+
+        scenario.close()
+    }
+
+    @Test
+    fun testLandscapeSplitsIntoMetricsAndButtonPane() {
+        val scenario = ActivityScenario.launch(MainActivity::class.java)
+        Thread.sleep(3000)
+
+        Assume.assumeTrue(Build.VERSION.SDK_INT >= 24)
+
+        scenario.onActivity { activity ->
+            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        }
+        Thread.sleep(3000)
+
+        // Every button is reachable without scrolling
+        for (buttonId in listOf(
+                R.id.main_activity_meter_car1_button,
+                R.id.main_activity_overlay_button,
+                R.id.main_activity_keep_screen_on_button,
+                R.id.main_activity_settings_button)) {
+            Espresso.onView(ViewMatchers.withId(buttonId))
+                .check(ViewAssertions.matches(ViewMatchers.isDisplayed()))
+        }
+
+        // The metrics stay in the left pane, the buttons sit in the right pane
+        scenario.onActivity { activity ->
+            val section = activity.findViewById<View>(R.id.main_activity_speed_section)
+            val button = activity.findViewById<View>(R.id.main_activity_settings_button)
+            val sectionLocation = IntArray(2)
+            val buttonLocation = IntArray(2)
+            section.getLocationOnScreen(sectionLocation)
+            button.getLocationOnScreen(buttonLocation)
+
+            assertTrue(
+                "buttons (x=${buttonLocation[0]}) must be beside the metrics (x=${sectionLocation[0]}, width=${section.width})",
+                buttonLocation[0] >= sectionLocation[0] + section.width)
+        }
+
+        // Leave the device in portrait for the other tests
+        scenario.onActivity { activity ->
+            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+        Thread.sleep(2000)
+
+        scenario.close()
+    }
+
     private fun isKeepScreenOnPreferenceEnabled(activity: Context): Boolean {
         return PreferenceManager.getDefaultSharedPreferences(activity)
             .getBoolean(MainActivity.PREFERENCE_KEY_KEEP_SCREEN_ON,
@@ -221,12 +320,16 @@ class MainActivityTest {
     }
 
     private fun scrollMainViewToBottom(scenario: ActivityScenario<MainActivity>) {
-        scenario.onActivity { activity ->
-            val scrollView = activity.findViewById<View>(R.id.main) as? ScrollView
-            // ScrollView#scrollTo clamps to the content size
-            scrollView?.scrollTo(0, Int.MAX_VALUE / 2)
+        // The digits resize themselves when the accuracy details change height,
+        // which can move the buttons after the first scroll, so scroll twice.
+        repeat(2) {
+            scenario.onActivity { activity ->
+                val scrollView = activity.findViewById<View>(R.id.main) as? ScrollView
+                // ScrollView#scrollTo clamps to the content size
+                scrollView?.scrollTo(0, Int.MAX_VALUE / 2)
+            }
+            Thread.sleep(400)
         }
-        Thread.sleep(500)
     }
 
     private fun scrollSettingsViewToBottom() {
